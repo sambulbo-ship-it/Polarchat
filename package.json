@@ -1,0 +1,37 @@
+{
+  "name": "polarchat",
+  "version": "1.0.0",
+  "description": "PolarChat - A privacy-first, end-to-end encrypted chat application. No tracking. No logs. No compromise.",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev:electron": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"cd electron && npm run dev\"",
+
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "build:electron": "cd electron && npm run build:ts",
+
+    "start": "cd server && npm start",
+
+    "desktop:prepare": "npm run build && npm run build:electron",
+    "desktop:pack": "npm run desktop:prepare && cd electron && npm run pack",
+    "desktop:dist": "npm run desktop:prepare && cd electron && npm run dist",
+    "desktop:win": "npm run desktop:prepare && cd electron && npm run dist:win",
+    "desktop:mac": "npm run desktop:prepare && cd electron && npm run dist:mac",
+    "desktop:linux": "npm run desktop:prepare && cd electron && npm run dist:linux",
+    "desktop:all": "npm run desktop:prepare && cd electron && npm run dist:all"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

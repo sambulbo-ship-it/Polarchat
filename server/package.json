@@ -1,0 +1,35 @@
+{
+  "name": "polarchat-server",
+  "version": "1.0.0",
+  "description": "Privacy-focused chat server for PolarChat - zero-knowledge, no tracking, E2EE relay",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "uuid": "^11.0.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.13",
+    "nodemon": "^3.1.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "private": true
+}

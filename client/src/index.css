@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: #1a1a2e;
+    color: #e4e4e7;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  #root {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2a2a4a;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a5a;
+  }
+
+  ::selection {
+    background-color: #533483;
+    color: #e4e4e7;
+  }
+}
+
+@layer components {
+  .polar-input {
+    @apply w-full px-4 py-2.5 bg-polar-input border border-polar-border rounded-lg
+           text-polar-text placeholder-polar-text-dim
+           focus:outline-none focus:border-polar-highlight focus:ring-1 focus:ring-polar-highlight
+           transition-all duration-200;
+  }
+
+  .polar-btn {
+    @apply px-4 py-2.5 rounded-lg font-medium transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-polar-bg;
+  }
+
+  .polar-btn-primary {
+    @apply polar-btn bg-polar-accent hover:bg-polar-highlight text-white
+           focus:ring-polar-accent;
+  }
+
+  .polar-btn-secondary {
+    @apply polar-btn bg-polar-border hover:bg-polar-text-dim/20 text-polar-text
+           focus:ring-polar-border;
+  }
+
+  .polar-btn-danger {
+    @apply polar-btn bg-polar-danger/20 hover:bg-polar-danger/40 text-polar-danger
+           focus:ring-polar-danger;
+  }
+
+  .polar-card {
+    @apply bg-polar-sidebar border border-polar-border rounded-xl p-6;
+  }
+
+  .polar-modal-overlay {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50
+           animate-fade-in;
+  }
+
+  .polar-modal {
+    @apply bg-polar-sidebar border border-polar-border rounded-xl p-6 w-full max-w-md
+           shadow-2xl animate-slide-up;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

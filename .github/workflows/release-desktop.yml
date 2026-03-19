@@ -1,0 +1,245 @@
+# Build and publish PolarChat desktop apps for Windows, macOS, and Linux.
+# Triggered when a version tag (v*.*.*) is pushed.
+# Creates a GitHub Release with all platform installers attached.
+# The electron-updater auto-update system reads from these releases.
+
+name: Release Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── Build client and server (shared by all platforms) ──────────────────────
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build client
+        run: npm run build:client
+        env:
+          ELECTRON_BUILD: 'true'
+
+      - name: Build server
+        run: npm run build:server
+
+      - name: Upload client build
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Upload server build
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-dist
+          path: |
+            server/dist/
+            server/node_modules/
+            server/package.json
+
+  # ─── Build Windows ─────────────────────────────────────────────────────────
+  build-windows:
+    needs: build-web
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download client build
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Download server build
+        uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: server/
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build Electron TypeScript
+        working-directory: electron
+        run: npm run build:ts
+
+      - name: Build Windows installer
+        working-directory: electron
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            release/*.exe
+            release/*.yml
+
+  # ─── Build macOS ───────────────────────────────────────────────────────────
+  build-macos:
+    needs: build-web
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download client build
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Download server build
+        uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: server/
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build Electron TypeScript
+        working-directory: electron
+        run: npm run build:ts
+
+      - name: Build macOS DMG
+        working-directory: electron
+        run: npx electron-builder --mac --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+
+  # ─── Build Linux ───────────────────────────────────────────────────────────
+  build-linux:
+    needs: build-web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download client build
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+      - name: Download server build
+        uses: actions/download-artifact@v4
+        with:
+          name: server-dist
+          path: server/
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build Electron TypeScript
+        working-directory: electron
+        run: npm run build:ts
+
+      - name: Build Linux packages
+        working-directory: electron
+        run: npx electron-builder --linux --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.yml
+
+  # ─── Create GitHub Release ─────────────────────────────────────────────────
+  publish-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la release-artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: PolarChat ${{ github.ref_name }}
+          body: |
+            ## PolarChat ${{ github.ref_name }}
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | Windows (installer) | `PolarChat-*-win-x64.exe` |
+            | Windows (portable) | `PolarChat-*-win-x64-portable.exe` |
+            | macOS (Intel) | `PolarChat-*-mac-x64.dmg` |
+            | macOS (Apple Silicon) | `PolarChat-*-mac-arm64.dmg` |
+            | Linux (AppImage) | `PolarChat-*-x64.AppImage` |
+            | Linux (Debian) | `PolarChat-*-linux-x64.deb` |
+            | Linux (RPM) | `PolarChat-*-linux-x64.rpm` |
+
+            ### Update
+            Existing users will be notified automatically. The app downloads updates in the background and applies them on restart.
+
+            ---
+            *Privacy-first. End-to-end encrypted. Open source.*
+          draft: false
+          prerelease: false
+          files: release-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
