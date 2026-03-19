@@ -91,10 +91,50 @@ npm run dev:server   # Backend on port 3001
 npm run dev:client   # Frontend on port 5173
 ```
 
-### Build
+### Build (Web)
 
 ```bash
 npm run build
+```
+
+### Build Desktop App (Native Installers)
+
+PolarChat can be packaged as a native desktop app for **Windows**, **macOS**, and **Linux**.
+
+```bash
+# Install Electron dependencies
+cd electron && npm install && cd ..
+
+# Build for your current platform
+npm run desktop:dist
+
+# Build for a specific platform
+npm run desktop:win      # Windows (.exe installer + portable)
+npm run desktop:mac      # macOS (.dmg + .zip)
+npm run desktop:linux    # Linux (.AppImage + .deb + .rpm)
+
+# Build for ALL platforms at once
+npm run desktop:all
+```
+
+#### Output Files
+
+| Platform | Format | Location |
+|----------|--------|----------|
+| Windows | `.exe` (NSIS installer) | `release/PolarChat-1.0.0-win-x64.exe` |
+| Windows | `.exe` (portable) | `release/PolarChat-1.0.0-win-x64-portable.exe` |
+| macOS | `.dmg` | `release/PolarChat-1.0.0-mac-x64.dmg` |
+| macOS | `.zip` | `release/PolarChat-1.0.0-mac-arm64.zip` |
+| Linux | `.AppImage` | `release/PolarChat-1.0.0-x64.AppImage` |
+| Linux | `.deb` | `release/PolarChat-1.0.0-linux-x64.deb` |
+| Linux | `.rpm` | `release/PolarChat-1.0.0-linux-x64.rpm` |
+
+#### Custom App Icon
+
+```bash
+# Generate icons from a 1024x1024 PNG source
+cd electron/assets
+./generate-icons.sh your-icon-1024x1024.png
 ```
 
 ## Privacy Policy

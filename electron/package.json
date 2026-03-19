@@ -2,17 +2,143 @@
   "name": "polarchat-desktop",
   "version": "1.0.0",
   "description": "PolarChat Desktop - Private & Secure Chat",
-  "main": "main.js",
+  "author": "PolarChat",
+  "license": "MIT",
+  "main": "dist/main.js",
   "scripts": {
-    "build": "tsc",
+    "build:ts": "tsc",
     "start": "electron .",
-    "dev": "tsc && electron ."
+    "dev": "tsc && NODE_ENV=development electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder --win --mac --linux",
+    "postinstall": "electron-builder install-app-deps"
   },
-  "dependencies": {
-    "electron": "^28.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.3.0",
     "@types/node": "^20.10.0"
+  },
+  "build": {
+    "appId": "com.polarchat.desktop",
+    "productName": "PolarChat",
+    "copyright": "Copyright © 2024 PolarChat",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "../release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "!node_modules"
+    ],
+    "extraResources": [
+      {
+        "from": "../client/dist",
+        "to": "renderer",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../server/dist",
+        "to": "server/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../server/node_modules",
+        "to": "server/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../server/package.json",
+        "to": "server/package.json"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "shortcutName": "PolarChat",
+      "menuCategory": "PolarChat"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.social-networking",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "PolarChat needs access to your microphone for encrypted voice calls."
+      }
+    },
+    "dmg": {
+      "title": "PolarChat",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icons",
+      "category": "Network;Chat;InstantMessaging",
+      "maintainer": "PolarChat",
+      "desktop": {
+        "Name": "PolarChat",
+        "Comment": "Private & Secure Chat",
+        "Keywords": "chat;messaging;encrypted;private;voice",
+        "StartupWMClass": "polarchat-desktop"
+      }
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   }
 }
