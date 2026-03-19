@@ -43,6 +43,10 @@ interface PlatformInfo {
   all: PlatformDownload[];
 }
 
+function proxyDownloadUrl(filename: string): string {
+  return `/download/${encodeURIComponent(filename)}`;
+}
+
 function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch: string): PlatformInfo {
   const patterns: Record<string, { label: string; pattern: RegExp; priority: number }[]> = {
     windows: [
@@ -72,7 +76,7 @@ function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch:
     if (asset) {
       all.push({
         label: p.label,
-        url: asset.browser_download_url,
+        url: proxyDownloadUrl(asset.name),
         size: formatSize(asset.size),
         filename: asset.name,
       });
@@ -513,33 +517,90 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
 </html>`;
 }
 
+async function fetchRelease(): Promise<GitHubRelease | null> {
+  try {
+    const ghRes = await fetch(GITHUB_API, {
+      headers: {
+        'User-Agent': 'PolarChat-Download-Worker',
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+    if (ghRes.ok) {
+      return await ghRes.json() as GitHubRelease;
+    }
+  } catch {
+    // Silently fail
+  }
+  return null;
+}
+
+async function handleDownload(filename: string): Promise<Response> {
+  const release = await fetchRelease();
+  if (!release) {
+    return new Response('Release not found', { status: 404 });
+  }
+
+  const asset = release.assets.find(a => a.name === filename);
+  if (!asset) {
+    return new Response('File not found', { status: 404 });
+  }
+
+  // Proxy the file from GitHub — stream it through the worker
+  const ghRes = await fetch(asset.browser_download_url, {
+    headers: {
+      'User-Agent': 'PolarChat-Download-Worker',
+    },
+    redirect: 'follow',
+  });
+
+  if (!ghRes.ok) {
+    return new Response('Download failed', { status: 502 });
+  }
+
+  // Determine content type from extension
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const contentTypes: Record<string, string> = {
+    exe: 'application/vnd.microsoft.portable-executable',
+    dmg: 'application/x-apple-diskimage',
+    zip: 'application/zip',
+    appimage: 'application/octet-stream',
+    deb: 'application/vnd.debian.binary-package',
+    rpm: 'application/x-rpm',
+  };
+
+  return new Response(ghRes.body, {
+    headers: {
+      'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': asset.size.toString(),
+      'Cache-Control': 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
-    const userAgent = request.headers.get('user-agent') || '';
+    const url = new URL(request.url);
 
-    // Try to fetch latest release from GitHub
-    let release: GitHubRelease | null = null;
-    try {
-      const ghRes = await fetch(GITHUB_API, {
-        headers: {
-          'User-Agent': 'PolarChat-Download-Worker',
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
-      if (ghRes.ok) {
-        release = await ghRes.json() as GitHubRelease;
+    // Handle /download/:filename — proxy file from GitHub
+    if (url.pathname.startsWith('/download/')) {
+      const filename = decodeURIComponent(url.pathname.replace('/download/', ''));
+      if (!filename || filename.includes('/') || filename.includes('..')) {
+        return new Response('Invalid filename', { status: 400 });
       }
-    } catch {
-      // Silently fail — page still works without release data
+      return handleDownload(filename);
     }
 
+    // Serve download page
+    const userAgent = request.headers.get('user-agent') || '';
+    const release = await fetchRelease();
     const html = renderPage(release, userAgent);
 
     return new Response(html, {
       headers: {
         'Content-Type': 'text/html;charset=UTF-8',
         'Cache-Control': 'public, max-age=300',
-        // Security headers
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
