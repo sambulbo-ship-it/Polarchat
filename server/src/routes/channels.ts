@@ -23,7 +23,7 @@ router.use(requireAuth);
  */
 router.get('/:serverId', (req: Request, res: Response) => {
   try {
-    const { serverId } = req.params;
+    const serverId = req.params.serverId as string;
     const userId = req.userId!;
 
     if (!isServerMember(serverId, userId)) {
@@ -103,7 +103,7 @@ router.post('/', (req: Request, res: Response) => {
  */
 router.delete('/:channelId', (req: Request, res: Response) => {
   try {
-    const { channelId } = req.params;
+    const channelId = req.params.channelId as string;
     const userId = req.userId!;
 
     const channel = getChannelById(channelId);
