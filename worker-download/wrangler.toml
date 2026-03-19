@@ -1,6 +1,7 @@
 name = "polarchat-download"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+account_id = "76a5c179c6feeefaa302487550cf7243"
 
 routes = [
   { pattern = "polarchat.animalcoat.com", custom_domain = true }
