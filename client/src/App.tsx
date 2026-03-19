@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
+import { DownloadPage } from './components/download/DownloadPage';
 import { MainLayout } from './components/layout/MainLayout';
 
 /**
@@ -78,6 +79,9 @@ export function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Download page — public, no auth required */}
+        <Route path="/download" element={<DownloadPage />} />
 
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, session, Tray, Menu, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, session, Tray, Menu, nativeImage, shell, ipcMain, Notification } from 'electron';
 import * as path from 'path';
 import { fork, ChildProcess } from 'child_process';
+import { initAutoUpdater, checkForUpdatesManually } from './updater';
 
 // Privacy: Disable hardware acceleration fingerprinting
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
@@ -79,7 +80,9 @@ function createWindow(): void {
     session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
       const url = new URL(details.url);
       const allowed = ['localhost', '127.0.0.1', 'polarchat'];
-      if (url.protocol === 'file:' || url.protocol === 'devtools:' || allowed.some(h => url.hostname.includes(h))) {
+      // Allow GitHub for auto-updater downloads
+      const updateHosts = ['github.com', 'api.github.com', 'objects.githubusercontent.com'];
+      if (url.protocol === 'file:' || url.protocol === 'devtools:' || allowed.some(h => url.hostname.includes(h)) || updateHosts.some(h => url.hostname === h)) {
         callback({ cancel: false });
       } else {
         callback({ cancel: true }); // Block all external network requests
@@ -264,7 +267,43 @@ app.on('ready', () => {
   createAppMenu();
   createWindow();
   createTray();
+  registerIpcHandlers();
+
+  // Auto-updater (production only — skipped in dev)
+  if (!isDev && mainWindow) {
+    initAutoUpdater(mainWindow);
+  }
 });
+
+// ─── IPC Handlers ────────────────────────────────────────────────────────────
+
+function registerIpcHandlers(): void {
+  // Window controls (for custom titlebar on Windows)
+  ipcMain.on('window:minimize', () => mainWindow?.minimize());
+  ipcMain.on('window:maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+  ipcMain.on('window:close', () => mainWindow?.close());
+
+  // App version
+  ipcMain.handle('app:version', () => app.getVersion());
+
+  // Native notifications
+  ipcMain.on('app:notify', (_event, { title, body }: { title: string; body: string }) => {
+    if (Notification.isSupported()) {
+      new Notification({ title, body, silent: false }).show();
+    }
+  });
+
+  // Manual update check from renderer
+  ipcMain.on('app:check-updates', () => {
+    checkForUpdatesManually();
+  });
+}
 
 // Handle second instance (focus existing window)
 app.on('second-instance', () => {
