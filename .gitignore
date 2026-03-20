@@ -39,3 +39,6 @@ coverage/
 
 # Electron
 release/
+
+# Worker build output
+dist-output/
