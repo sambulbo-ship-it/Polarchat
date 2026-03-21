@@ -3,7 +3,6 @@ import {
   encryptWithSharedKey,
   decryptWithSharedKey,
   generateSessionKey,
-  keyToString,
 } from '../crypto';
 import { keyManager } from '../crypto/keyManager';
 
@@ -97,6 +96,10 @@ export const useChatStore = create<ChatState>((set, get) => {
           get().receiveMessage(data.payload);
           break;
 
+        case 'message-ack':
+          // Message sent confirmation — could update UI if needed
+          break;
+
         case 'typing':
           set((state) => {
             const filtered = state.typingUsers.filter(
@@ -133,8 +136,20 @@ export const useChatStore = create<ChatState>((set, get) => {
           }));
           break;
 
-        case 'server_update':
-          get().loadServers();
+        case 'servers_list':
+          handleServersList(data.payload);
+          break;
+
+        case 'messages_list':
+          handleMessagesList(data.payload);
+          break;
+
+        case 'server_created':
+          // Server was created, servers_list was already sent by server
+          break;
+
+        case 'server_joined':
+          // Server was joined, servers_list was already sent by server
           break;
 
         case 'channel_key':
@@ -145,12 +160,123 @@ export const useChatStore = create<ChatState>((set, get) => {
           );
           break;
 
+        case 'error':
+          console.warn('[PolarChat] Server error:', data.payload.error);
+          break;
+
+        // voice_signal, voice_channel_state, voice_user_left are handled by useWebSocket hook
+        case 'voice_signal':
+        case 'voice_channel_state':
+        case 'voice_user_left':
+          break;
+
         default:
           break;
       }
     } catch {
       // Silently ignore malformed messages
     }
+  }
+
+  function handleServersList(payload: Record<string, unknown>) {
+    const rawServers = payload.servers as Array<{
+      id: string;
+      name: string;
+      ownerId: string;
+      inviteCode?: string;
+      channels: Array<{
+        id: string;
+        name: string;
+        serverId: string;
+        type: 'text' | 'voice';
+      }>;
+    }>;
+
+    if (!Array.isArray(rawServers)) return;
+
+    const servers: Server[] = rawServers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      ownerId: s.ownerId,
+      inviteCode: s.inviteCode,
+      memberCount: 0,
+      channels: s.channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        serverId: c.serverId,
+        type: c.type,
+        unreadCount: 0,
+      })),
+    }));
+
+    const state = get();
+    const update: Partial<ChatState> = { servers };
+
+    // If no active server, auto-select the first one
+    if (!state.activeServerId && servers.length > 0) {
+      const firstServer = servers[0];
+      const firstTextChannel = firstServer.channels.find((c) => c.type === 'text');
+      update.activeServerId = firstServer.id;
+      update.channels = firstServer.channels;
+      update.activeChannelId = firstTextChannel?.id || null;
+
+      // Load messages for the first channel
+      if (firstTextChannel) {
+        setTimeout(() => get().loadMessages(firstTextChannel.id), 0);
+      }
+    } else if (state.activeServerId) {
+      // Refresh channels for the active server
+      const activeServer = servers.find((s) => s.id === state.activeServerId);
+      if (activeServer) {
+        update.channels = activeServer.channels;
+      }
+    }
+
+    set(update as ChatState);
+  }
+
+  function handleMessagesList(payload: Record<string, unknown>) {
+    const channelId = payload.channelId as string;
+    const rawMessages = payload.messages as Array<{
+      id: string;
+      channelId: string;
+      senderId: string;
+      ciphertext: string;
+      nonce: string;
+      timestamp: number;
+    }>;
+
+    if (!channelId || !Array.isArray(rawMessages)) return;
+
+    const messages: Message[] = rawMessages.map((m) => {
+      const channelKeyEntry = keyManager.getChannelKey(m.channelId);
+      let content = '[Unable to decrypt - missing key]';
+
+      if (channelKeyEntry) {
+        try {
+          content = decryptWithSharedKey(m.ciphertext, m.nonce, channelKeyEntry.key);
+        } catch {
+          content = '[Decryption failed - key mismatch]';
+        }
+      }
+
+      return {
+        id: m.id,
+        channelId: m.channelId,
+        senderId: m.senderId,
+        senderName: m.senderId.slice(0, 8), // short ID as display name
+        content,
+        timestamp: m.timestamp,
+        encrypted: true,
+      };
+    });
+
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [channelId]: messages,
+      },
+    }));
   }
 
   return {
@@ -211,6 +337,24 @@ export const useChatStore = create<ChatState>((set, get) => {
           },
         })
       );
+
+      // Optimistic local add
+      const message: Message = {
+        id: `pending-${Date.now()}`,
+        channelId,
+        senderId: 'self',
+        senderName: 'You',
+        content,
+        timestamp: Math.floor(Date.now() / 1000),
+        encrypted: true,
+      };
+
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [channelId]: [...(state.messages[channelId] || []), message],
+        },
+      }));
     },
 
     receiveMessage: (rawMessage: RawServerMessage) => {
@@ -235,7 +379,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         id: rawMessage.id,
         channelId: rawMessage.channelId,
         senderId: rawMessage.senderId,
-        senderName: rawMessage.senderName,
+        senderName: rawMessage.senderName || rawMessage.senderId.slice(0, 8),
         content,
         timestamp: rawMessage.timestamp,
         encrypted,
@@ -279,6 +423,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       ws.onopen = () => {
         reconnectAttempts = 0;
         set({ isConnected: true });
+        // Server auto-sends servers_list on auth, no need to request
       };
 
       ws.onmessage = handleWsMessage;
@@ -344,11 +489,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     },
 
     loadServers: () => {
-      // Servers are loaded via WebSocket on connection
       const { ws } = get();
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-      ws.send(JSON.stringify({ type: 'get_servers' }));
+      ws.send(JSON.stringify({ type: 'get_servers', payload: {} }));
     },
 
     loadMessages: (channelId: string) => {

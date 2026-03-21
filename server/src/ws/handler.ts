@@ -6,9 +6,16 @@ import {
   storeMessage,
   markMessageDelivered,
   getChannelById,
+  getChannelsByServerId,
   isServerMember,
   getKeyBundle,
   consumeOneTimePrekey,
+  getUserServers,
+  getMessagesByChannel,
+  createServer as dbCreateServer,
+  getServerByInviteCode,
+  getServerById,
+  addServerMember,
 } from '../db';
 import { safeLog } from '../privacy';
 
@@ -24,7 +31,14 @@ type WSMessageType =
   | 'rtc-ice-candidate'
   | 'key-exchange'
   | 'delivery-confirmation'
-  | 'fetch-key-bundle';
+  | 'fetch-key-bundle'
+  | 'get_servers'
+  | 'get_messages'
+  | 'create_server'
+  | 'join_server'
+  | 'voice_signal'
+  | 'voice_join'
+  | 'voice_leave';
 
 interface WSIncoming {
   type: WSMessageType;
@@ -41,6 +55,7 @@ interface AuthenticatedClient {
   userId: string;
   subscribedChannels: Set<string>;
   presenceOptIn: boolean;
+  voiceChannelId: string | null;
 }
 
 // ─── Client registry ──────────────────────────────────────────────────────────
@@ -48,12 +63,16 @@ interface AuthenticatedClient {
 const clients = new Map<WebSocket, AuthenticatedClient>();
 const userClients = new Map<string, Set<WebSocket>>();
 
+// Track users in voice channels: channelId -> Set<userId>
+const voiceChannelUsers = new Map<string, Set<string>>();
+
 function registerClient(ws: WebSocket, userId: string): AuthenticatedClient {
   const client: AuthenticatedClient = {
     ws,
     userId,
     subscribedChannels: new Set(),
     presenceOptIn: false,
+    voiceChannelId: null,
   };
   clients.set(ws, client);
 
@@ -68,6 +87,11 @@ function registerClient(ws: WebSocket, userId: string): AuthenticatedClient {
 function removeClient(ws: WebSocket): void {
   const client = clients.get(ws);
   if (client) {
+    // Leave voice channel if in one
+    if (client.voiceChannelId) {
+      leaveVoiceChannel(client);
+    }
+
     const userSockets = userClients.get(client.userId);
     if (userSockets) {
       userSockets.delete(ws);
@@ -134,11 +158,50 @@ function sendToUser(userId: string, msg: WSOutgoing): void {
   }
 }
 
+/**
+ * Broadcast to all users in a voice channel, optionally excluding one.
+ */
+function broadcastToVoiceChannel(channelId: string, msg: WSOutgoing, excludeUserId?: string): void {
+  const users = voiceChannelUsers.get(channelId);
+  if (!users) return;
+  for (const userId of users) {
+    if (userId !== excludeUserId) {
+      sendToUser(userId, msg);
+    }
+  }
+}
+
+/**
+ * Remove a client from their current voice channel and notify others.
+ */
+function leaveVoiceChannel(client: AuthenticatedClient): void {
+  const channelId = client.voiceChannelId;
+  if (!channelId) return;
+
+  const users = voiceChannelUsers.get(channelId);
+  if (users) {
+    users.delete(client.userId);
+    if (users.size === 0) {
+      voiceChannelUsers.delete(channelId);
+    }
+  }
+
+  client.voiceChannelId = null;
+
+  // Notify remaining users
+  broadcastToVoiceChannel(channelId, {
+    type: 'voice_user_left',
+    payload: {
+      userId: client.userId,
+      channelId,
+    },
+  });
+}
+
 // ─── Connection handler ────────────────────────────────────────────────────────
 
 export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): void {
   // Authenticate via query parameter or first message.
-  // Try query param first: ws://host/ws?token=xxx
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const tokenParam = url.searchParams.get('token');
 
@@ -149,6 +212,9 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
     if (payload) {
       client = registerClient(ws, payload.userId);
       send(ws, { type: 'auth', payload: { status: 'authenticated', userId: payload.userId } });
+
+      // Auto-send servers list on connect
+      sendUserServers(client);
     } else {
       sendError(ws, 'Invalid or expired token');
       ws.close(4001, 'Unauthorized');
@@ -171,7 +237,7 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
     try {
       const data: WSIncoming = JSON.parse(raw.toString());
 
-      if (!data.type || !data.payload) {
+      if (!data.type) {
         sendError(ws, 'Invalid message format');
         return;
       }
@@ -179,7 +245,7 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
       // If not yet authenticated, only accept auth messages.
       if (!clients.has(ws)) {
         if (data.type === 'auth') {
-          handleAuth(ws, data.payload, authTimeout);
+          handleAuth(ws, data.payload || {}, authTimeout);
         } else {
           sendError(ws, 'Not authenticated');
         }
@@ -187,30 +253,52 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
       }
 
       const authenticatedClient = clients.get(ws)!;
+      const payload = data.payload || {};
 
       switch (data.type) {
         case 'message':
-          handleMessage(authenticatedClient, data.payload);
+          handleMessage(authenticatedClient, payload);
           break;
         case 'typing':
-          handleTyping(authenticatedClient, data.payload);
+          handleTyping(authenticatedClient, payload);
           break;
         case 'presence':
-          handlePresenceUpdate(authenticatedClient, data.payload);
+          handlePresenceUpdate(authenticatedClient, payload);
           break;
         case 'rtc-offer':
         case 'rtc-answer':
         case 'rtc-ice-candidate':
-          handleRtcSignal(authenticatedClient, data.type, data.payload);
+          handleRtcSignal(authenticatedClient, data.type, payload);
           break;
         case 'key-exchange':
-          handleKeyExchange(authenticatedClient, data.payload);
+          handleKeyExchange(authenticatedClient, payload);
           break;
         case 'delivery-confirmation':
-          handleDeliveryConfirmation(authenticatedClient, data.payload);
+          handleDeliveryConfirmation(authenticatedClient, payload);
           break;
         case 'fetch-key-bundle':
-          handleFetchKeyBundle(authenticatedClient, data.payload);
+          handleFetchKeyBundle(authenticatedClient, payload);
+          break;
+        case 'get_servers':
+          sendUserServers(authenticatedClient);
+          break;
+        case 'get_messages':
+          handleGetMessages(authenticatedClient, payload);
+          break;
+        case 'create_server':
+          handleCreateServer(authenticatedClient, payload);
+          break;
+        case 'join_server':
+          handleJoinServer(authenticatedClient, payload);
+          break;
+        case 'voice_signal':
+          handleVoiceSignal(authenticatedClient, payload);
+          break;
+        case 'voice_join':
+          handleVoiceJoin(authenticatedClient, payload);
+          break;
+        case 'voice_leave':
+          handleVoiceLeave(authenticatedClient);
           break;
         default:
           sendError(ws, `Unknown message type: ${data.type}`);
@@ -233,9 +321,6 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
 
 // ─── Message handlers ──────────────────────────────────────────────────────────
 
-/**
- * Handle authentication via WebSocket message.
- */
 function handleAuth(
   ws: WebSocket,
   payload: Record<string, unknown>,
@@ -255,9 +340,12 @@ function handleAuth(
   }
 
   if (authTimeout) clearTimeout(authTimeout);
-  registerClient(ws, tokenPayload.userId);
+  const client = registerClient(ws, tokenPayload.userId);
 
   send(ws, { type: 'auth', payload: { status: 'authenticated', userId: tokenPayload.userId } });
+
+  // Auto-send servers list after auth
+  sendUserServers(client);
 }
 
 /**
@@ -274,7 +362,6 @@ function handleMessage(client: AuthenticatedClient, payload: Record<string, unkn
     return;
   }
 
-  // Verify the channel exists and the user is a member of the server.
   const channel = getChannelById(channelId);
   if (!channel) {
     sendError(client.ws, 'Channel not found');
@@ -316,9 +403,6 @@ function handleMessage(client: AuthenticatedClient, payload: Record<string, unkn
   });
 }
 
-/**
- * Handle typing indicators. These are ephemeral — not stored at all.
- */
 function handleTyping(client: AuthenticatedClient, payload: Record<string, unknown>): void {
   const channelId = payload.channelId as string;
   if (!channelId) return;
@@ -332,10 +416,6 @@ function handleTyping(client: AuthenticatedClient, payload: Record<string, unkno
   }, client.ws);
 }
 
-/**
- * Handle presence updates. Presence is opt-in only — users must explicitly
- * enable it, and it reveals only online/offline status.
- */
 function handlePresenceUpdate(client: AuthenticatedClient, payload: Record<string, unknown>): void {
   const optIn = payload.optIn as boolean | undefined;
   const status = payload.status as string | undefined;
@@ -343,14 +423,12 @@ function handlePresenceUpdate(client: AuthenticatedClient, payload: Record<strin
   if (typeof optIn === 'boolean') {
     client.presenceOptIn = optIn;
 
-    // If opting in, broadcast current online status.
     if (optIn) {
       broadcastPresence(client.userId, 'online');
     }
     return;
   }
 
-  // Manually set status (only if opted in).
   if (client.presenceOptIn && status) {
     if (status === 'online' || status === 'offline') {
       broadcastPresence(client.userId, status);
@@ -358,10 +436,6 @@ function handlePresenceUpdate(client: AuthenticatedClient, payload: Record<strin
   }
 }
 
-/**
- * Handle WebRTC signaling for voice/video calls. The server relays SDP offers,
- * answers, and ICE candidates between peers without inspecting them.
- */
 function handleRtcSignal(
   client: AuthenticatedClient,
   type: 'rtc-offer' | 'rtc-answer' | 'rtc-ice-candidate',
@@ -373,7 +447,6 @@ function handleRtcSignal(
     return;
   }
 
-  // Relay the signal to the target user.
   sendToUser(targetUserId, {
     type,
     payload: {
@@ -383,10 +456,6 @@ function handleRtcSignal(
   });
 }
 
-/**
- * Handle E2EE key exchange messages between users (e.g., X3DH initial key exchange).
- * The server relays these opaque blobs without decrypting.
- */
 function handleKeyExchange(client: AuthenticatedClient, payload: Record<string, unknown>): void {
   const targetUserId = payload.targetUserId as string;
   const keyData = payload.keyData;
@@ -405,9 +474,6 @@ function handleKeyExchange(client: AuthenticatedClient, payload: Record<string, 
   });
 }
 
-/**
- * Handle delivery confirmation — marks a message as delivered so it can be purged.
- */
 function handleDeliveryConfirmation(
   client: AuthenticatedClient,
   payload: Record<string, unknown>
@@ -425,9 +491,6 @@ function handleDeliveryConfirmation(
   }
 }
 
-/**
- * Handle a request to fetch another user's public key bundle for E2EE setup.
- */
 function handleFetchKeyBundle(
   client: AuthenticatedClient,
   payload: Record<string, unknown>
@@ -447,7 +510,6 @@ function handleFetchKeyBundle(
     return;
   }
 
-  // Consume one one-time prekey (they are single-use).
   const oneTimePrekey = consumeOneTimePrekey(targetUserId);
 
   send(client.ws, {
@@ -458,8 +520,224 @@ function handleFetchKeyBundle(
         identityKey: bundle.identity_key,
         signedPrekey: bundle.signed_prekey,
         prekeySignature: bundle.prekey_signature,
-        oneTimePrekey, // may be null if exhausted
+        oneTimePrekey,
       },
     },
   });
+}
+
+// ─── New handlers: servers, messages, voice ─────────────────────────────────────
+
+/**
+ * Send the user's server list with channels.
+ */
+function sendUserServers(client: AuthenticatedClient): void {
+  const servers = getUserServers(client.userId);
+
+  const serversWithChannels = servers.map((s) => {
+    const channels = getChannelsByServerId(s.id);
+    return {
+      id: s.id,
+      name: s.name_encrypted,
+      ownerId: s.owner_id,
+      inviteCode: s.invite_code,
+      channels: channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        serverId: c.server_id,
+        type: c.type,
+      })),
+    };
+  });
+
+  send(client.ws, {
+    type: 'servers_list',
+    payload: { servers: serversWithChannels },
+  });
+
+  // Auto-subscribe client to all their text channels
+  for (const server of serversWithChannels) {
+    for (const channel of server.channels) {
+      client.subscribedChannels.add(channel.id);
+    }
+  }
+}
+
+/**
+ * Send message history for a channel.
+ */
+function handleGetMessages(client: AuthenticatedClient, payload: Record<string, unknown>): void {
+  const channelId = payload.channelId as string;
+  const limit = (payload.limit as number) || 50;
+  const before = payload.before as number | undefined;
+
+  if (!channelId) {
+    sendError(client.ws, 'Missing channelId');
+    return;
+  }
+
+  const channel = getChannelById(channelId);
+  if (!channel) {
+    sendError(client.ws, 'Channel not found');
+    return;
+  }
+
+  if (!isServerMember(channel.server_id, client.userId)) {
+    sendError(client.ws, 'Not a member of this server');
+    return;
+  }
+
+  // Subscribe to this channel
+  client.subscribedChannels.add(channelId);
+
+  const messages = getMessagesByChannel(channelId, limit, before);
+
+  send(client.ws, {
+    type: 'messages_list',
+    payload: {
+      channelId,
+      messages: messages.map((m) => ({
+        id: m.id,
+        channelId: m.channel_id,
+        senderId: m.sender_id,
+        ciphertext: m.ciphertext,
+        nonce: m.nonce,
+        timestamp: m.created_at,
+      })),
+    },
+  });
+}
+
+/**
+ * Create a new server.
+ */
+function handleCreateServer(client: AuthenticatedClient, payload: Record<string, unknown>): void {
+  const name = payload.name as string;
+  if (!name) {
+    sendError(client.ws, 'Missing server name');
+    return;
+  }
+
+  const serverId = uuidv4();
+  const inviteCode = uuidv4().slice(0, 8);
+
+  dbCreateServer(serverId, name, client.userId, inviteCode);
+
+  // Send updated server list
+  sendUserServers(client);
+
+  send(client.ws, {
+    type: 'server_created',
+    payload: { serverId, inviteCode },
+  });
+}
+
+/**
+ * Join a server via invite code.
+ */
+function handleJoinServer(client: AuthenticatedClient, payload: Record<string, unknown>): void {
+  const inviteCode = payload.inviteCode as string;
+  if (!inviteCode) {
+    sendError(client.ws, 'Missing invite code');
+    return;
+  }
+
+  const server = getServerByInviteCode(inviteCode);
+  if (!server) {
+    sendError(client.ws, 'Invalid invite code');
+    return;
+  }
+
+  if (isServerMember(server.id, client.userId)) {
+    sendError(client.ws, 'Already a member');
+    return;
+  }
+
+  addServerMember(server.id, client.userId);
+
+  // Send updated server list
+  sendUserServers(client);
+
+  send(client.ws, {
+    type: 'server_joined',
+    payload: { serverId: server.id },
+  });
+}
+
+/**
+ * Handle voice signaling (offer/answer/ice-candidate) relayed between peers.
+ */
+function handleVoiceSignal(client: AuthenticatedClient, payload: Record<string, unknown>): void {
+  const type = payload.type as string;
+  const toUserId = payload.toUserId as string;
+
+  if (!type || !toUserId) {
+    sendError(client.ws, 'Missing type or toUserId in voice_signal');
+    return;
+  }
+
+  // Relay the signal to the target user
+  sendToUser(toUserId, {
+    type: 'voice_signal',
+    payload: {
+      type,
+      fromUserId: client.userId,
+      ...(payload.sdp ? { sdp: payload.sdp } : {}),
+      ...(payload.candidate ? { candidate: payload.candidate } : {}),
+    },
+  });
+}
+
+/**
+ * Handle a user joining a voice channel.
+ */
+function handleVoiceJoin(client: AuthenticatedClient, payload: Record<string, unknown>): void {
+  const channelId = payload.channelId as string;
+  if (!channelId) {
+    sendError(client.ws, 'Missing channelId');
+    return;
+  }
+
+  // Leave current voice channel if in one
+  if (client.voiceChannelId) {
+    leaveVoiceChannel(client);
+  }
+
+  // Join new voice channel
+  if (!voiceChannelUsers.has(channelId)) {
+    voiceChannelUsers.set(channelId, new Set());
+  }
+
+  const usersInChannel = voiceChannelUsers.get(channelId)!;
+
+  // Notify existing users that a new user joined (so they create peer connections)
+  broadcastToVoiceChannel(channelId, {
+    type: 'voice_signal',
+    payload: {
+      type: 'user-joined',
+      fromUserId: client.userId,
+      fromUsername: client.userId, // userId used as identifier
+      channelId,
+    },
+  });
+
+  usersInChannel.add(client.userId);
+  client.voiceChannelId = channelId;
+
+  // Send current voice channel users to the joining user
+  const userList = Array.from(usersInChannel).filter((id) => id !== client.userId);
+  send(client.ws, {
+    type: 'voice_channel_state',
+    payload: {
+      channelId,
+      users: userList,
+    },
+  });
+}
+
+/**
+ * Handle a user leaving voice.
+ */
+function handleVoiceLeave(client: AuthenticatedClient): void {
+  leaveVoiceChannel(client);
 }
