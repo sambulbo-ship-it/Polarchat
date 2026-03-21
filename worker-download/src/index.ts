@@ -132,8 +132,11 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
               <span class="download-size">${d.size}</span>
             </a>
           `).join('') : `
-            <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="download-item">
-              <span class="download-label">View on GitHub</span>
+            <a href="/get/${p}" class="download-item">
+              <span class="download-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </span>
+              <span class="download-label">Download for ${platformLabels[p]}</span>
               <span class="download-size">↗</span>
             </a>
           `}
@@ -410,11 +413,11 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
           </a>
           <p class="cta-meta">${downloads.primary.filename} — ${downloads.primary.size} — v${version}</p>
         ` : `
-          <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="cta-btn">
+          <a href="/get/${platform}" class="cta-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for ${platformLabels[platform]}
           </a>
-          <p class="cta-meta">Visit GitHub Releases to get the latest version</p>
+          <p class="cta-meta">v${version} — Auto-detects your system</p>
         `}
       </div>
 
@@ -534,6 +537,22 @@ async function fetchRelease(): Promise<GitHubRelease | null> {
   return null;
 }
 
+async function handlePlatformDownload(platform: string, userAgent: string): Promise<Response> {
+  const release = await fetchRelease();
+  const arch = detectArch(userAgent);
+
+  if (release && release.assets.length > 0) {
+    const dl = getDownloadsForPlatform(release.assets, platform, arch);
+    if (dl.primary) {
+      // Redirect to the proxy download route with the actual filename
+      return Response.redirect(new URL(`/download/${encodeURIComponent(dl.primary.filename)}`, 'https://polarchat.animalcoat.com').toString(), 302);
+    }
+  }
+
+  // No assets available — redirect to GitHub releases
+  return Response.redirect(`https://github.com/${GITHUB_REPO}/releases`, 302);
+}
+
 async function handleDownload(filename: string): Promise<Response> {
   const release = await fetchRelease();
   if (!release) {
@@ -582,6 +601,17 @@ async function handleDownload(filename: string): Promise<Response> {
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Handle /get/:os — auto-resolve best download for platform
+    if (url.pathname.startsWith('/get/')) {
+      const os = url.pathname.replace('/get/', '').toLowerCase();
+      const validOs = ['windows', 'mac', 'linux'];
+      if (!validOs.includes(os)) {
+        return new Response('Invalid platform', { status: 400 });
+      }
+      const userAgent = request.headers.get('user-agent') || '';
+      return handlePlatformDownload(os, userAgent);
+    }
 
     // Handle /download/:filename — proxy file from GitHub
     if (url.pathname.startsWith('/download/')) {
