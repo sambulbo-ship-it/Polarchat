@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, MicOff, Headphones, HeadphoneOff, PhoneOff, Wifi, WifiOff, Lock } from 'lucide-react';
+import { Mic, MicOff, Headphones, EarOff, PhoneOff, Wifi, WifiOff, Lock } from 'lucide-react';
 import { useWebRTC } from '../../hooks/useWebRTC';
 
 export function VoiceControls() {
@@ -69,7 +69,7 @@ export function VoiceControls() {
           }`}
           title={isDeafened ? 'Undeafen' : 'Deafen'}
         >
-          {isDeafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
+          {isDeafened ? <EarOff size={18} /> : <Headphones size={18} />}
         </button>
 
         <button
