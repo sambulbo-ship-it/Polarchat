@@ -1,6 +1,6 @@
 {
   "name": "polarchat",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "PolarChat - A privacy-first, end-to-end encrypted chat application. No tracking. No logs. No compromise.",
   "private": true,
   "workspaces": [
