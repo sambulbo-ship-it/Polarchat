@@ -23,6 +23,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [keyBackup, setKeyBackup] = useState<EncryptedKeyBackup | null>(null);
   const [backupDownloaded, setBackupDownloaded] = useState(false);
   const { register, isLoading, error, clearError } = useAuthStore();
@@ -55,7 +56,7 @@ export function RegisterPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `polarchat-keys-${username}.json`;
+    a.download = `polarchat-keys-backup-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -236,6 +237,22 @@ export function RegisterPage() {
               )}
             </div>
 
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="privacy-consent"
+                checked={agreedToPrivacy}
+                onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-polar-border bg-polar-bg text-blue-500 focus:ring-blue-500"
+              />
+              <label htmlFor="privacy-consent" className="text-sm text-polar-text-muted">
+                I have read and agree to the{' '}
+                <Link to="/privacy" className="text-blue-400 hover:text-blue-300 font-medium">
+                  Privacy Policy
+                </Link>
+              </label>
+            </div>
+
             <button
               type="submit"
               disabled={
@@ -243,7 +260,8 @@ export function RegisterPage() {
                 !username.trim() ||
                 !password ||
                 !passwordsMatch ||
-                password.length < 8
+                password.length < 8 ||
+                !agreedToPrivacy
               }
               className="polar-btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
             >

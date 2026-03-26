@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import argon2 from 'argon2';
 import { v4 as uuidv4 } from 'uuid';
-import { createUser, getUserByUsernameHash, upsertKeyBundle } from '../db';
+import { createUser, getUserByUsernameHash, getUserById, upsertKeyBundle, getUserData, deleteUser } from '../db';
 import { hashUsername, createSessionToken } from '../crypto';
 import { safeLog } from '../privacy';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -29,8 +30,8 @@ router.post('/register', async (req: Request, res: Response) => {
       return;
     }
 
-    if (typeof password !== 'string' || password.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      res.status(400).json({ error: 'Password must be between 8 and 128 characters' });
       return;
     }
 
@@ -97,6 +98,11 @@ router.post('/login', async (req: Request, res: Response) => {
       return;
     }
 
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      res.status(400).json({ error: 'Password must be between 8 and 128 characters' });
+      return;
+    }
+
     const usernameHash = hashUsername(username);
     const user = getUserByUsernameHash(usernameHash);
 
@@ -124,6 +130,79 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (err) {
     safeLog.error('Login failed');
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * GET /auth/me/export
+ *
+ * GDPR data access request. Returns all data associated with the authenticated user.
+ * Requires a valid session token.
+ */
+router.get('/me/export', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const user = getUserById(userId);
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const data = getUserData(userId);
+
+    safeLog.info('User data export requested');
+
+    res.json({
+      exportedAt: new Date().toISOString(),
+      user: {
+        id: data.user?.id,
+        username_hash: data.user?.username_hash,
+        public_key: data.user?.public_key,
+        created_at: data.user?.created_at,
+      },
+      servers: data.servers,
+      memberships: data.memberships,
+      channels: data.channels,
+      messages: data.messages,
+      keyBundle: data.keyBundle ? {
+        identity_key: data.keyBundle.identity_key,
+        signed_prekey: data.keyBundle.signed_prekey,
+        prekey_signature: data.keyBundle.prekey_signature,
+        one_time_prekeys: data.keyBundle.one_time_prekeys,
+      } : null,
+    });
+  } catch (err) {
+    safeLog.error('Data export failed');
+    res.status(500).json({ error: 'Data export failed' });
+  }
+});
+
+/**
+ * DELETE /auth/me
+ *
+ * GDPR right to erasure. Deletes the authenticated user's account and all
+ * associated data (memberships, messages, owned servers if sole owner, key bundles).
+ * Requires a valid session token.
+ */
+router.delete('/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const user = getUserById(userId);
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    deleteUser(userId);
+
+    safeLog.info('User account deleted');
+
+    res.json({ message: 'Account and all associated data have been deleted' });
+  } catch (err) {
+    safeLog.error('Account deletion failed');
+    res.status(500).json({ error: 'Account deletion failed' });
   }
 });
 

@@ -58,6 +58,28 @@ interface AuthenticatedClient {
   voiceChannelId: string | null;
 }
 
+// ─── WebSocket rate limiting ─────────────────────────────────────────────────
+
+const MESSAGE_RATE_LIMIT = 10; // max messages per second
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+
+  if (!entry || now >= entry.resetTime) {
+    rateLimitMap.set(userId, { count: 1, resetTime: now + 1000 });
+    return false;
+  }
+
+  entry.count++;
+  if (entry.count > MESSAGE_RATE_LIMIT) {
+    return true;
+  }
+
+  return false;
+}
+
 // ─── Client registry ──────────────────────────────────────────────────────────
 
 const clients = new Map<WebSocket, AuthenticatedClient>();
@@ -253,6 +275,13 @@ export function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage): 
       }
 
       const authenticatedClient = clients.get(ws)!;
+
+      // Rate limit check for authenticated messages.
+      if (isRateLimited(authenticatedClient.userId)) {
+        sendError(ws, 'Rate limit exceeded. Max 10 messages per second.');
+        return;
+      }
+
       const payload = data.payload || {};
 
       switch (data.type) {
