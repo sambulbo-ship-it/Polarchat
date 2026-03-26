@@ -16,6 +16,7 @@ if (!gotTheLock) {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let serverProcess: ChildProcess | null = null;
+let isQuitting = false;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -133,7 +134,7 @@ function createWindow(): void {
 
   // macOS: hide window instead of closing (stays in dock)
   mainWindow.on('close', (event) => {
-    if (process.platform === 'darwin' && !app.isQuitting) {
+    if (process.platform === 'darwin' && !isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -148,7 +149,7 @@ function createWindow(): void {
 
 function createTray(): void {
   const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
-  let trayIcon: nativeImage;
+  let trayIcon: Electron.NativeImage;
 
   try {
     trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
@@ -180,7 +181,7 @@ function createTray(): void {
     {
       label: 'Quit PolarChat',
       click: () => {
-        (app as any).isQuitting = true;
+        isQuitting = true;
         app.quit();
       },
     },
@@ -329,7 +330,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
-  (app as any).isQuitting = true;
+  isQuitting = true;
   // Privacy: Clear all session data on quit
   session.defaultSession.clearStorageData();
   stopEmbeddedServer();
