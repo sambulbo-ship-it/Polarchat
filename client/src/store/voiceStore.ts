@@ -12,6 +12,7 @@ interface PeerConnection {
   userId: string;
   connection: RTCPeerConnection;
   audioStream?: MediaStream;
+  audioElement?: HTMLAudioElement;
 }
 
 interface VoiceState {
@@ -32,6 +33,8 @@ interface VoiceState {
   toggleMute: () => void;
   toggleDeafen: () => void;
   handleVoiceSignal: (signal: VoiceSignal) => void;
+  handleVoiceChannelState: (payload: { channelId: string; users: string[] }) => void;
+  handleVoiceUserLeft: (payload: { userId: string; channelId: string }) => void;
   setConnectionQuality: (quality: 'good' | 'fair' | 'poor' | 'unknown') => void;
   addUserToChannel: (user: VoiceUser) => void;
   removeUserFromChannel: (userId: string) => void;
@@ -41,30 +44,150 @@ interface VoiceSignal {
   type: 'offer' | 'answer' | 'ice-candidate' | 'user-joined' | 'user-left';
   fromUserId: string;
   fromUsername?: string;
-  payload: unknown;
+  payload?: unknown;
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
 }
 
-const ICE_SERVERS: RTCConfiguration = {
+// Optimized ICE config with multiple STUN servers for reliability
+const ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
   ],
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
 };
 
+// Optimal audio constraints for voice chat
+const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  sampleRate: 48000,
+  sampleSize: 16,
+  channelCount: 1,
+};
+
+/**
+ * Apply Opus codec preferences for maximum voice quality.
+ * Opus at 64kbps mono is optimal for voice (near-transparent quality).
+ */
+function preferOpusCodec(sdp: string): string {
+  // Set Opus bitrate to 64kbps for high quality voice
+  // maxaveragebitrate in bits per second
+  const opusParams = 'maxaveragebitrate=64000;stereo=0;useinbandfec=1;usedtx=1';
+
+  return sdp.replace(
+    /a=fmtp:111 /g,
+    `a=fmtp:111 ${opusParams};`
+  ).replace(
+    // Also set bandwidth limit at session level
+    /m=audio (\d+)/,
+    'm=audio $1'
+  );
+}
+
+/**
+ * Modify SDP to set max bitrate for audio.
+ */
+function setAudioBitrate(sdp: string, maxBitrateKbps: number): string {
+  const lines = sdp.split('\r\n');
+  const result: string[] = [];
+  let audioSection = false;
+
+  for (const line of lines) {
+    result.push(line);
+    if (line.startsWith('m=audio')) {
+      audioSection = true;
+    } else if (line.startsWith('m=') && !line.startsWith('m=audio')) {
+      audioSection = false;
+    }
+    // Add bandwidth line after c= line in audio section
+    if (audioSection && line.startsWith('c=')) {
+      result.push(`b=AS:${maxBitrateKbps}`);
+    }
+  }
+
+  return result.join('\r\n');
+}
+
 export const useVoiceStore = create<VoiceState>((set, get) => {
+  // Quality monitoring interval
+  let qualityInterval: ReturnType<typeof setInterval> | null = null;
+
+  function getWs(): WebSocket | null {
+    return (window as unknown as { __polarWs?: WebSocket }).__polarWs || null;
+  }
+
+  function startQualityMonitoring() {
+    if (qualityInterval) clearInterval(qualityInterval);
+
+    qualityInterval = setInterval(async () => {
+      const { peers } = get();
+      let worstQuality: 'good' | 'fair' | 'poor' | 'unknown' = 'good';
+
+      for (const peer of Object.values(peers)) {
+        try {
+          const stats = await peer.connection.getStats();
+          stats.forEach((report) => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              const rtt = report.currentRoundTripTime;
+              if (rtt !== undefined) {
+                if (rtt > 0.3) worstQuality = 'poor';
+                else if (rtt > 0.15 && worstQuality !== 'poor') worstQuality = 'fair';
+              }
+            }
+            // Check packet loss
+            if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+              const lossRate = report.packetsLost / (report.packetsReceived + report.packetsLost || 1);
+              if (lossRate > 0.1) worstQuality = 'poor';
+              else if (lossRate > 0.03 && worstQuality !== 'poor') worstQuality = 'fair';
+            }
+          });
+        } catch {
+          // Stats not available
+        }
+      }
+
+      if (Object.keys(peers).length > 0) {
+        set({ connectionQuality: worstQuality });
+      }
+    }, 3000);
+  }
+
+  function stopQualityMonitoring() {
+    if (qualityInterval) {
+      clearInterval(qualityInterval);
+      qualityInterval = null;
+    }
+  }
+
   async function createPeerConnection(
     userId: string,
-    ws: WebSocket | null,
     isInitiator: boolean
   ): Promise<RTCPeerConnection> {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(ICE_CONFIG);
+    const ws = getWs();
 
     // Add local audio tracks to the connection
     const { localStream } = get();
     if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-      });
+      for (const track of localStream.getAudioTracks()) {
+        const sender = pc.addTrack(track, localStream);
+
+        // Set encoding parameters for optimal quality
+        const params = sender.getParameters();
+        if (params.encodings && params.encodings.length > 0) {
+          params.encodings[0].maxBitrate = 64000; // 64kbps Opus
+          params.encodings[0].priority = 'high';
+          params.encodings[0].networkPriority = 'high';
+          sender.setParameters(params).catch(() => {});
+        }
+      }
     }
 
     // Handle incoming audio
@@ -73,6 +196,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;
+      audio.volume = 1.0;
+
+      // Ensure audio plays (browsers may block autoplay)
+      audio.play().catch(() => {
+        // Will retry on user interaction
+        document.addEventListener('click', () => audio.play(), { once: true });
+      });
 
       set((state) => ({
         peers: {
@@ -80,6 +210,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
           [userId]: {
             ...state.peers[userId],
             audioStream: remoteStream,
+            audioElement: audio,
           },
         },
       }));
@@ -94,7 +225,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
             payload: {
               type: 'ice-candidate',
               toUserId: userId,
-              candidate: event.candidate,
+              candidate: event.candidate.toJSON(),
             },
           })
         );
@@ -104,13 +235,16 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
     pc.onconnectionstatechange = () => {
       switch (pc.connectionState) {
         case 'connected':
-          get().setConnectionQuality('good');
+          set({ connectionQuality: 'good' });
+          startQualityMonitoring();
           break;
         case 'disconnected':
-          get().setConnectionQuality('poor');
+          set({ connectionQuality: 'poor' });
           break;
         case 'failed':
-          get().setConnectionQuality('poor');
+          // Try ICE restart
+          pc.restartIce();
+          set({ connectionQuality: 'poor' });
           break;
         default:
           break;
@@ -129,6 +263,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
         offerToReceiveAudio: true,
         offerToReceiveVideo: false,
       });
+
+      // Optimize SDP for voice quality
+      if (offer.sdp) {
+        offer.sdp = preferOpusCodec(offer.sdp);
+        offer.sdp = setAudioBitrate(offer.sdp, 64);
+      }
+
       await pc.setLocalDescription(offer);
 
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -171,13 +312,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
       set({ isConnecting: true });
 
       try {
-        // Request microphone access
+        // Request microphone access with optimized constraints
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: AUDIO_CONSTRAINTS,
           video: false,
         });
 
@@ -208,13 +345,20 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
     leaveVoiceChannel: (ws: WebSocket | null) => {
       const state = get();
 
+      // Stop quality monitoring
+      stopQualityMonitoring();
+
       // Stop local audio
       if (state.localStream) {
         state.localStream.getTracks().forEach((track) => track.stop());
       }
 
-      // Close all peer connections
+      // Close all peer connections and stop audio elements
       Object.values(state.peers).forEach((peer) => {
+        if (peer.audioElement) {
+          peer.audioElement.pause();
+          peer.audioElement.srcObject = null;
+        }
         peer.connection.close();
       });
 
@@ -257,6 +401,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
 
       // Mute/unmute all remote audio
       Object.values(peers).forEach((peer) => {
+        if (peer.audioElement) {
+          peer.audioElement.muted = newDeafened;
+        }
         if (peer.audioStream) {
           peer.audioStream.getAudioTracks().forEach((track) => {
             track.enabled = !newDeafened;
@@ -283,19 +430,12 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
 
     handleVoiceSignal: async (signal: VoiceSignal) => {
       const state = get();
+      if (!state.currentChannelId) return;
 
       switch (signal.type) {
         case 'user-joined': {
-          // Create a peer connection and send an offer
-          const ws = state.peers[Object.keys(state.peers)[0]]?.connection
-            ? null
-            : null;
-          // Peer joined, create connection as initiator
-          if (state.currentChannelId) {
-            // We need ws from outside - get it from chatStore
-            const wsFromStorage = (window as unknown as { __polarWs?: WebSocket }).__polarWs;
-            await createPeerConnection(signal.fromUserId, wsFromStorage || null, true);
-          }
+          // Someone joined — create peer connection and send offer
+          await createPeerConnection(signal.fromUserId, true);
 
           if (signal.fromUsername) {
             get().addUserToChannel({
@@ -310,15 +450,23 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
         }
 
         case 'offer': {
-          const wsFromStorage = (window as unknown as { __polarWs?: WebSocket }).__polarWs;
-          const pc = await createPeerConnection(signal.fromUserId, wsFromStorage || null, false);
-          const sdp = signal.payload as RTCSessionDescriptionInit;
+          // Received an offer — create peer connection and send answer
+          const pc = await createPeerConnection(signal.fromUserId, false);
+          const sdp = signal.sdp as RTCSessionDescriptionInit;
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
           const answer = await pc.createAnswer();
+
+          // Optimize answer SDP
+          if (answer.sdp) {
+            answer.sdp = preferOpusCodec(answer.sdp);
+            answer.sdp = setAudioBitrate(answer.sdp, 64);
+          }
+
           await pc.setLocalDescription(answer);
 
-          if (wsFromStorage && wsFromStorage.readyState === WebSocket.OPEN) {
-            wsFromStorage.send(
+          const ws = getWs();
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(
               JSON.stringify({
                 type: 'voice_signal',
                 payload: {
@@ -335,7 +483,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
         case 'answer': {
           const peer = state.peers[signal.fromUserId];
           if (peer) {
-            const sdp = signal.payload as RTCSessionDescriptionInit;
+            const sdp = signal.sdp as RTCSessionDescriptionInit;
             await peer.connection.setRemoteDescription(new RTCSessionDescription(sdp));
           }
           break;
@@ -343,9 +491,8 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
 
         case 'ice-candidate': {
           const peer = state.peers[signal.fromUserId];
-          if (peer) {
-            const candidate = signal.payload as RTCIceCandidateInit;
-            await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+          if (peer && signal.candidate) {
+            await peer.connection.addIceCandidate(new RTCIceCandidate(signal.candidate));
           }
           break;
         }
@@ -353,6 +500,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
         case 'user-left': {
           const peer = state.peers[signal.fromUserId];
           if (peer) {
+            if (peer.audioElement) {
+              peer.audioElement.pause();
+              peer.audioElement.srcObject = null;
+            }
             peer.connection.close();
           }
           get().removeUserFromChannel(signal.fromUserId);
@@ -364,6 +515,44 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
           break;
         }
       }
+    },
+
+    handleVoiceChannelState: (payload: { channelId: string; users: string[] }) => {
+      // Received list of users already in the channel — create peer connections
+      const state = get();
+      if (state.currentChannelId !== payload.channelId) return;
+
+      for (const userId of payload.users) {
+        // Add user to channel list
+        state.addUserToChannel({
+          userId,
+          username: userId.slice(0, 8),
+          isMuted: false,
+          isDeafened: false,
+          isSpeaking: false,
+        });
+
+        // Create peer connection as initiator (we're joining them)
+        createPeerConnection(userId, true);
+      }
+    },
+
+    handleVoiceUserLeft: (payload: { userId: string; channelId: string }) => {
+      const state = get();
+      const peer = state.peers[payload.userId];
+      if (peer) {
+        if (peer.audioElement) {
+          peer.audioElement.pause();
+          peer.audioElement.srcObject = null;
+        }
+        peer.connection.close();
+      }
+      state.removeUserFromChannel(payload.userId);
+      set((s) => {
+        const newPeers = { ...s.peers };
+        delete newPeers[payload.userId];
+        return { peers: newPeers };
+      });
     },
 
     setConnectionQuality: (quality) => set({ connectionQuality: quality }),

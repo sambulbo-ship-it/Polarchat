@@ -1,5 +1,6 @@
 const GITHUB_REPO = 'sambulbo-ship-it/Polarchat';
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const VERSION = '0.2';
 
 interface ReleaseAsset {
   name: string;
@@ -13,8 +14,10 @@ interface GitHubRelease {
   published_at: string;
 }
 
-function detectPlatform(ua: string): 'windows' | 'mac' | 'linux' {
+function detectPlatform(ua: string): 'windows' | 'mac' | 'linux' | 'android' | 'ios' {
   const lower = ua.toLowerCase();
+  if (lower.includes('android')) return 'android';
+  if (lower.includes('iphone') || lower.includes('ipad') || lower.includes('ipod')) return 'ios';
   if (lower.includes('win')) return 'windows';
   if (lower.includes('mac')) return 'mac';
   return 'linux';
@@ -41,6 +44,10 @@ interface PlatformDownload {
 interface PlatformInfo {
   primary: PlatformDownload | null;
   all: PlatformDownload[];
+}
+
+function proxyDownloadUrl(filename: string): string {
+  return `/download/${encodeURIComponent(filename)}`;
 }
 
 function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch: string): PlatformInfo {
@@ -72,7 +79,7 @@ function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch:
     if (asset) {
       all.push({
         label: p.label,
-        url: asset.browser_download_url,
+        url: proxyDownloadUrl(asset.name),
         size: formatSize(asset.size),
         filename: asset.name,
       });
@@ -92,20 +99,24 @@ function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch:
 function renderPage(release: GitHubRelease | null, userAgent: string): string {
   const platform = detectPlatform(userAgent);
   const arch = detectArch(userAgent);
-  const version = release?.tag_name?.replace(/^v/, '') || '—';
+  const version = release?.tag_name?.replace(/^v/, '') || VERSION;
 
-  const platformLabels: Record<string, string> = { windows: 'Windows', mac: 'macOS', linux: 'Linux' };
+  const platformLabels: Record<string, string> = { windows: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS' };
   const platformIcons: Record<string, string> = {
     windows: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
     mac: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>`,
     linux: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    android: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.523 2.297l1.29-2.2a.4.4 0 00-.138-.548.4.4 0 00-.548.138L16.834 2.01A7.5 7.5 0 0012 .89a7.5 7.5 0 00-4.834 1.12L5.873-.313a.4.4 0 00-.548-.138.4.4 0 00-.138.548l1.29 2.2C3.45 4.233 1.5 7.2 1.5 10.6h21c0-3.4-1.95-6.367-4.977-8.303zM7.5 8.1a1 1 0 110-2 1 1 0 010 2zm9 0a1 1 0 110-2 1 1 0 010 2zM1.5 11.7v8.1a1.5 1.5 0 003 0v-8.1h-3zm18 0v8.1a1.5 1.5 0 003 0v-8.1h-3zm-15 0v10.5a1.8 1.8 0 001.8 1.8h1.35v3.15a1.5 1.5 0 003 0V24h2.7v3.15a1.5 1.5 0 003 0V24h1.35a1.8 1.8 0 001.8-1.8V11.7h-15z"/></svg>`,
+    ios: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>`,
   };
 
   const downloads = release ? getDownloadsForPlatform(release.assets, platform, arch) : { primary: null, all: [] };
-  const otherPlatforms = ['windows', 'mac', 'linux'].filter(p => p !== platform);
+  const isMobile = platform === 'android' || platform === 'ios';
+  const desktopPlatform = isMobile ? 'windows' : platform;
+  const otherPlatforms = ['windows', 'mac', 'linux', 'android', 'ios'].filter(p => p !== platform);
 
-  // Build download cards for all platforms
-  const allPlatformCards = ['windows', 'mac', 'linux'].map(p => {
+  // Build download cards for desktop platforms
+  const desktopPlatformCards = ['windows', 'mac', 'linux'].map(p => {
     const dl = release ? getDownloadsForPlatform(release.assets, p, arch) : { primary: null, all: [] };
     const isDetected = p === platform;
     return `
@@ -115,7 +126,7 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
           <span class="platform-icon">${platformIcons[p]}</span>
           <div>
             <h3>${platformLabels[p]}</h3>
-            ${release ? `<span class="version-small">v${version}</span>` : ''}
+            <span class="version-small">v${version}</span>
           </div>
         </div>
         <div class="download-list">
@@ -128,8 +139,11 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
               <span class="download-size">${d.size}</span>
             </a>
           `).join('') : `
-            <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="download-item">
-              <span class="download-label">View on GitHub</span>
+            <a href="/get/${p}" class="download-item">
+              <span class="download-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </span>
+              <span class="download-label">Download for ${platformLabels[p]}</span>
               <span class="download-size">↗</span>
             </a>
           `}
@@ -137,6 +151,64 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
       </div>
     `;
   }).join('');
+
+  // Build mobile beta cards (Android & iOS)
+  const mobilePlatformCards = `
+    <div class="platform-card ${platform === 'android' ? 'detected' : ''}">
+      <span class="badge beta-badge">Beta</span>
+      <div class="platform-header">
+        <span class="platform-icon">${platformIcons.android}</span>
+        <div>
+          <h3>Android</h3>
+          <span class="version-small">v${version}-beta</span>
+        </div>
+      </div>
+      <div class="download-list">
+        <a href="/get/android" class="download-item">
+          <span class="download-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </span>
+          <span class="download-label">Download APK</span>
+          <span class="download-size">beta</span>
+        </a>
+        <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="download-item">
+          <span class="download-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          </span>
+          <span class="download-label">Join the Android beta</span>
+          <span class="download-size">↗</span>
+        </a>
+      </div>
+    </div>
+    <div class="platform-card ${platform === 'ios' ? 'detected' : ''}">
+      <span class="badge beta-badge">Beta</span>
+      <div class="platform-header">
+        <span class="platform-icon">${platformIcons.ios}</span>
+        <div>
+          <h3>iOS</h3>
+          <span class="version-small">v${version}-beta</span>
+        </div>
+      </div>
+      <div class="download-list">
+        <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="download-item">
+          <span class="download-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </span>
+          <span class="download-label">TestFlight Beta</span>
+          <span class="download-size">↗</span>
+        </a>
+        <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="download-item">
+          <span class="download-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          </span>
+          <span class="download-label">Join the iOS beta</span>
+          <span class="download-size">↗</span>
+        </a>
+      </div>
+    </div>
+  `;
+
+  const allPlatformCards = desktopPlatformCards + mobilePlatformCards;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -276,7 +348,7 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
     /* ── Platform Cards ─────────────────────────────────────── */
     .platforms { padding: 60px 0; }
     .platforms h2 { text-align: center; font-size: 28px; font-weight: 700; margin-bottom: 40px; }
-    .platform-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .platform-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
     .platform-card {
       background: var(--sidebar); border: 1px solid var(--border); border-radius: 16px;
       padding: 24px; position: relative; transition: border-color 0.2s;
@@ -287,6 +359,14 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
       position: absolute; top: -10px; left: 16px; padding: 2px 10px; border-radius: 100px;
       background: var(--highlight); font-size: 11px; font-weight: 700; color: white;
       text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .badge.beta-badge {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      animation: pulse-beta 2s ease-in-out infinite;
+    }
+    @keyframes pulse-beta {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+      50% { box-shadow: 0 0 12px 2px rgba(245, 158, 11, 0.2); }
     }
     .platform-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
     .platform-icon {
@@ -399,18 +479,24 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
       </p>
 
       <div class="cta-wrapper">
-        ${downloads.primary ? `
+        ${isMobile ? `
+          <a href="#platforms" class="cta-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Get PolarChat for ${platformLabels[platform]}
+          </a>
+          <p class="cta-meta">v${version}-beta — Mobile beta available now</p>
+        ` : downloads.primary ? `
           <a href="${downloads.primary.url}" class="cta-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for ${platformLabels[platform]}
           </a>
           <p class="cta-meta">${downloads.primary.filename} — ${downloads.primary.size} — v${version}</p>
         ` : `
-          <a href="https://github.com/${GITHUB_REPO}/releases" target="_blank" rel="noopener" class="cta-btn">
+          <a href="/get/${platform}" class="cta-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for ${platformLabels[platform]}
           </a>
-          <p class="cta-meta">Visit GitHub Releases to get the latest version</p>
+          <p class="cta-meta">v${version} — Auto-detects your system</p>
         `}
       </div>
 
@@ -495,6 +581,32 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
             <code>sudo dpkg -i polarchat-*.deb</code>
             <p><strong>Fedora / RHEL:</strong></p>
             <code>sudo rpm -i polarchat-*.rpm</code>
+            <p><strong>One-line installer:</strong></p>
+            <code>curl -fsSL https://polarchat.animalcoat.com/install.sh | bash</code>
+          </div>
+        </details>
+
+        <details ${platform === 'android' ? 'open' : ''}>
+          <summary>
+            <span>🤖 Android <span style="background:linear-gradient(135deg,#f59e0b,#ef4444);padding:1px 8px;border-radius:100px;font-size:10px;font-weight:700;color:white;margin-left:8px">BETA</span></span>
+            <span class="arrow">›</span>
+          </summary>
+          <div class="install-content">
+            <p><strong>APK (sideload):</strong> Download the .apk file and open it on your Android device. You may need to enable "Install from unknown sources" in your settings.</p>
+            <p><strong>Requirements:</strong> Android 8.0 (Oreo) or later.</p>
+            <p class="note">This is a beta release. Some features may be unstable. Report bugs on GitHub.</p>
+          </div>
+        </details>
+
+        <details ${platform === 'ios' ? 'open' : ''}>
+          <summary>
+            <span>🍎 iOS <span style="background:linear-gradient(135deg,#f59e0b,#ef4444);padding:1px 8px;border-radius:100px;font-size:10px;font-weight:700;color:white;margin-left:8px">BETA</span></span>
+            <span class="arrow">›</span>
+          </summary>
+          <div class="install-content">
+            <p><strong>TestFlight:</strong> Join the beta via TestFlight to get automatic updates and early access to new features.</p>
+            <p><strong>Requirements:</strong> iOS 15.0 or later.</p>
+            <p class="note">This is a beta release via Apple TestFlight. Limited spots available.</p>
           </div>
         </details>
       </div>
@@ -513,33 +625,134 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
 </html>`;
 }
 
+async function fetchRelease(): Promise<GitHubRelease | null> {
+  try {
+    const ghRes = await fetch(GITHUB_API, {
+      headers: {
+        'User-Agent': 'PolarChat-Download-Worker',
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+    if (ghRes.ok) {
+      return await ghRes.json() as GitHubRelease;
+    }
+  } catch {
+    // Silently fail
+  }
+  return null;
+}
+
+async function handlePlatformDownload(platform: string, userAgent: string): Promise<Response> {
+  const release = await fetchRelease();
+  const arch = detectArch(userAgent);
+
+  if (release && release.assets.length > 0) {
+    const dl = getDownloadsForPlatform(release.assets, platform, arch);
+    if (dl.primary) {
+      // Redirect to the proxy download route with the actual filename
+      return Response.redirect(new URL(`/download/${encodeURIComponent(dl.primary.filename)}`, 'https://polarchat.animalcoat.com').toString(), 302);
+    }
+  }
+
+  // No assets available — redirect to GitHub releases
+  return Response.redirect(`https://github.com/${GITHUB_REPO}/releases`, 302);
+}
+
+async function handleDownload(filename: string): Promise<Response> {
+  const release = await fetchRelease();
+  if (!release) {
+    return new Response('Release not found', { status: 404 });
+  }
+
+  const asset = release.assets.find(a => a.name === filename);
+  if (!asset) {
+    return new Response('File not found', { status: 404 });
+  }
+
+  // Proxy the file from GitHub — stream it through the worker
+  const ghRes = await fetch(asset.browser_download_url, {
+    headers: {
+      'User-Agent': 'PolarChat-Download-Worker',
+    },
+    redirect: 'follow',
+  });
+
+  if (!ghRes.ok) {
+    return new Response('Download failed', { status: 502 });
+  }
+
+  // Determine content type from extension
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const contentTypes: Record<string, string> = {
+    exe: 'application/vnd.microsoft.portable-executable',
+    dmg: 'application/x-apple-diskimage',
+    zip: 'application/zip',
+    appimage: 'application/octet-stream',
+    deb: 'application/vnd.debian.binary-package',
+    rpm: 'application/x-rpm',
+  };
+
+  return new Response(ghRes.body, {
+    headers: {
+      'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': asset.size.toString(),
+      'Cache-Control': 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
-    const userAgent = request.headers.get('user-agent') || '';
+    const url = new URL(request.url);
 
-    // Try to fetch latest release from GitHub
-    let release: GitHubRelease | null = null;
-    try {
-      const ghRes = await fetch(GITHUB_API, {
-        headers: {
-          'User-Agent': 'PolarChat-Download-Worker',
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
-      if (ghRes.ok) {
-        release = await ghRes.json() as GitHubRelease;
+    // Serve install scripts — proxy from GitHub raw
+    if (url.pathname === '/install.sh' || url.pathname === '/install.ps1') {
+      const filename = url.pathname.slice(1);
+      const rawUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/worker-download/scripts/${filename}`;
+      const scriptRes = await fetch(rawUrl, { headers: { 'User-Agent': 'PolarChat-Download-Worker' } });
+      if (scriptRes.ok) {
+        return new Response(scriptRes.body, {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+        });
       }
-    } catch {
-      // Silently fail — page still works without release data
+      return new Response('Script not found', { status: 404 });
     }
 
+    // Handle /get/:os — auto-resolve best download for platform
+    if (url.pathname.startsWith('/get/')) {
+      const os = url.pathname.replace('/get/', '').toLowerCase();
+      const validOs = ['windows', 'mac', 'linux', 'android', 'ios'];
+      if (!validOs.includes(os)) {
+        return new Response('Invalid platform', { status: 400 });
+      }
+      // Mobile platforms redirect to GitHub releases for now
+      if (os === 'android' || os === 'ios') {
+        return Response.redirect(`https://github.com/${GITHUB_REPO}/releases`, 302);
+      }
+      const userAgent = request.headers.get('user-agent') || '';
+      return handlePlatformDownload(os, userAgent);
+    }
+
+    // Handle /download/:filename — proxy file from GitHub
+    if (url.pathname.startsWith('/download/')) {
+      const filename = decodeURIComponent(url.pathname.replace('/download/', ''));
+      if (!filename || filename.includes('/') || filename.includes('..')) {
+        return new Response('Invalid filename', { status: 400 });
+      }
+      return handleDownload(filename);
+    }
+
+    // Serve download page
+    const userAgent = request.headers.get('user-agent') || '';
+    const release = await fetchRelease();
     const html = renderPage(release, userAgent);
 
     return new Response(html, {
       headers: {
         'Content-Type': 'text/html;charset=UTF-8',
         'Cache-Control': 'public, max-age=300',
-        // Security headers
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',

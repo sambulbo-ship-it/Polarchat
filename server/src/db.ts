@@ -327,6 +327,82 @@ export function consumeOneTimePrekey(userId: string): string | null {
   return key;
 }
 
+// ─── GDPR operations ────────────────────────────────────────────────────────────
+
+export function getUserData(userId: string): {
+  user: UserRow | undefined;
+  servers: ServerRow[];
+  memberships: ServerMemberRow[];
+  channels: ChannelRow[];
+  messages: MessageRow[];
+  keyBundle: KeyBundleRow | undefined;
+} {
+  const db = getDb();
+  const user = getUserById(userId);
+  const memberships = db.prepare('SELECT * FROM server_members WHERE user_id = ?').all(userId) as ServerMemberRow[];
+  const servers = db.prepare(
+    `SELECT s.* FROM servers s
+     INNER JOIN server_members sm ON s.id = sm.server_id
+     WHERE sm.user_id = ?`
+  ).all(userId) as ServerRow[];
+  const serverIds = servers.map(s => s.id);
+  let channels: ChannelRow[] = [];
+  if (serverIds.length > 0) {
+    const placeholders = serverIds.map(() => '?').join(',');
+    channels = db.prepare(
+      `SELECT * FROM channels WHERE server_id IN (${placeholders})`
+    ).all(...serverIds) as ChannelRow[];
+  }
+  const messages = db.prepare('SELECT * FROM messages WHERE sender_id = ?').all(userId) as MessageRow[];
+  const keyBundle = getKeyBundle(userId);
+
+  return { user, servers, memberships, channels, messages, keyBundle };
+}
+
+export function deleteUser(userId: string): void {
+  const db = getDb();
+
+  const transaction = db.transaction(() => {
+    // Find servers where this user is the sole owner.
+    const ownedServers = db.prepare(
+      'SELECT id FROM servers WHERE owner_id = ?'
+    ).all(userId) as { id: string }[];
+
+    for (const server of ownedServers) {
+      // Check if there are other members who could take ownership.
+      const otherMembers = db.prepare(
+        'SELECT user_id FROM server_members WHERE server_id = ? AND user_id != ?'
+      ).all(server.id, userId) as { user_id: string }[];
+
+      if (otherMembers.length === 0) {
+        // Sole owner with no other members — delete the server (cascades to channels, messages, memberships).
+        db.prepare('DELETE FROM servers WHERE id = ?').run(server.id);
+      } else {
+        // Transfer ownership to the first remaining member before leaving.
+        const newOwner = otherMembers[0].user_id;
+        db.prepare('UPDATE servers SET owner_id = ? WHERE id = ?').run(newOwner, server.id);
+        db.prepare(
+          'UPDATE server_members SET role = ? WHERE server_id = ? AND user_id = ?'
+        ).run('owner', server.id, newOwner);
+      }
+    }
+
+    // Remove memberships (for servers user doesn't own).
+    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(userId);
+
+    // Remove messages sent by this user.
+    db.prepare('DELETE FROM messages WHERE sender_id = ?').run(userId);
+
+    // Remove key bundle.
+    db.prepare('DELETE FROM key_bundles WHERE user_id = ?').run(userId);
+
+    // Finally, delete the user row.
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  });
+
+  transaction();
+}
+
 // ─── Cleanup ────────────────────────────────────────────────────────────────────
 
 export function closeDb(): void {

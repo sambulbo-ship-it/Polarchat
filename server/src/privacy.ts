@@ -65,6 +65,10 @@ export function stripIdentifyingHeaders(req: Request, res: Response, next: NextF
   originalSetHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
   originalSetHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   originalSetHeader('Pragma', 'no-cache');
+  originalSetHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'"
+  );
 
   next();
 }

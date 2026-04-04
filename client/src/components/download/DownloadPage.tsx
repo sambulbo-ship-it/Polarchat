@@ -15,7 +15,8 @@ import {
 
 // ─── OS Detection ────────────────────────────────────────────────────────────
 
-type Platform = 'windows' | 'mac' | 'linux' | 'unknown';
+type KnownPlatform = 'windows' | 'mac' | 'linux';
+type Platform = KnownPlatform | 'unknown';
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
@@ -223,7 +224,7 @@ export function DownloadPage() {
 
           <p className="text-sm text-polar-text-dim">
             Also available for{' '}
-            {(['windows', 'mac', 'linux'] as Platform[])
+            {(['windows', 'mac', 'linux'] as KnownPlatform[])
               .filter((p) => p !== platform)
               .map((p, i, arr) => (
                 <React.Fragment key={p}>
@@ -243,7 +244,7 @@ export function DownloadPage() {
           <h2 className="text-2xl font-bold text-center mb-10">All Downloads</h2>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {(['windows', 'mac', 'linux'] as Platform[]).map((p) => {
+            {(['windows', 'mac', 'linux'] as KnownPlatform[]).map((p) => {
               const config = PLATFORMS[p];
               const Icon = config.icon;
               const assets = getAssetsForPlatform(p);
