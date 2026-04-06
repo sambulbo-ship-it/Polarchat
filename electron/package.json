@@ -99,10 +99,8 @@
       "icon": "assets/icon.png",
       "category": "public.app-category.social-networking",
       "darkModeSupport": true,
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "PolarChat needs access to your microphone for encrypted voice calls."
       }

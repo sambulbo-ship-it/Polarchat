@@ -47,6 +47,8 @@ interface PlatformInfo {
 }
 
 function proxyDownloadUrl(filename: string): string {
+  // Direct redirect to GitHub release asset instead of proxying through worker
+  // (Cloudflare Workers free tier can't reliably stream large binaries)
   return `/download/${encodeURIComponent(filename)}`;
 }
 
@@ -563,9 +565,11 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
             <span class="arrow">›</span>
           </summary>
           <div class="install-content">
-            <p><strong>.dmg:</strong> Open the DMG file, drag PolarChat to your Applications folder. Done.</p>
-            <p><strong>Apple Silicon (M1/M2/M3/M4):</strong> Download the arm64 version for best performance.</p>
-            <p class="note">Requires macOS 11 (Big Sur) or later. If Gatekeeper blocks the app: System Settings → Privacy & Security → "Open Anyway".</p>
+            <p><strong>.dmg:</strong> Open the DMG file, drag PolarChat to your Applications folder.</p>
+            <p><strong>⚠️ "PolarChat is damaged" error:</strong> This happens because the app is not signed with an Apple Developer certificate. To fix it, run this command in Terminal:</p>
+            <code>xattr -cr /Applications/PolarChat.app</code>
+            <p>Then open the app normally. Alternatively: System Settings → Privacy & Security → "Open Anyway".</p>
+            <p class="note">Requires macOS 11 (Big Sur) or later.</p>
           </div>
         </details>
 
@@ -669,38 +673,10 @@ async function handleDownload(filename: string): Promise<Response> {
     return new Response('File not found', { status: 404 });
   }
 
-  // Proxy the file from GitHub — stream it through the worker
-  const ghRes = await fetch(asset.browser_download_url, {
-    headers: {
-      'User-Agent': 'PolarChat-Download-Worker',
-    },
-    redirect: 'follow',
-  });
-
-  if (!ghRes.ok) {
-    return new Response('Download failed', { status: 502 });
-  }
-
-  // Determine content type from extension
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const contentTypes: Record<string, string> = {
-    exe: 'application/vnd.microsoft.portable-executable',
-    dmg: 'application/x-apple-diskimage',
-    zip: 'application/zip',
-    appimage: 'application/octet-stream',
-    deb: 'application/vnd.debian.binary-package',
-    rpm: 'application/x-rpm',
-  };
-
-  return new Response(ghRes.body, {
-    headers: {
-      'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Length': asset.size.toString(),
-      'Cache-Control': 'public, max-age=3600',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  });
+  // Redirect directly to GitHub release asset URL.
+  // Proxying through the worker fails for large binaries (Cloudflare Workers
+  // free tier has response size and CPU time limits).
+  return Response.redirect(asset.browser_download_url, 302);
 }
 
 export default {
