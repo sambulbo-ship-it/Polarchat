@@ -1,7 +1,16 @@
 import { app, BrowserWindow, session, Tray, Menu, nativeImage, shell, ipcMain, Notification } from 'electron';
 import * as path from 'path';
 import { fork, ChildProcess } from 'child_process';
-import { initAutoUpdater, checkForUpdatesManually } from './updater';
+// Auto-updater is optional — electron-updater may not be bundled in unsigned builds
+let initAutoUpdater: ((win: import('electron').BrowserWindow) => void) | null = null;
+let checkForUpdatesManually: (() => void) | null = null;
+try {
+  const updater = require('./updater');
+  initAutoUpdater = updater.initAutoUpdater;
+  checkForUpdatesManually = updater.checkForUpdatesManually;
+} catch {
+  // electron-updater not available — auto-updates disabled
+}
 
 // Privacy: Disable hardware acceleration fingerprinting
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
@@ -270,8 +279,8 @@ app.on('ready', () => {
   createTray();
   registerIpcHandlers();
 
-  // Auto-updater (production only — skipped in dev)
-  if (!isDev && mainWindow) {
+  // Auto-updater (production only — skipped in dev or if electron-updater unavailable)
+  if (!isDev && mainWindow && initAutoUpdater) {
     initAutoUpdater(mainWindow);
   }
 });
@@ -302,7 +311,7 @@ function registerIpcHandlers(): void {
 
   // Manual update check from renderer
   ipcMain.on('app:check-updates', () => {
-    checkForUpdatesManually();
+    if (checkForUpdatesManually) checkForUpdatesManually();
   });
 }
 
