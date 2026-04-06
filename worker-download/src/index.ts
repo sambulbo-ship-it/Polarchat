@@ -566,11 +566,12 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
             <span class="arrow">›</span>
           </summary>
           <div class="install-content">
-            <p><strong>.dmg:</strong> Open the DMG file, drag PolarChat to your Applications folder.</p>
-            <p><strong>⚠️ "PolarChat is damaged" error:</strong> This happens because the app is not signed with an Apple Developer certificate. To fix it, run this command in Terminal:</p>
+            <p><strong>1.</strong> Download the .dmg file and open it.</p>
+            <p><strong>2.</strong> Drag PolarChat to your Applications folder.</p>
+            <p><strong>3.</strong> Open Terminal and run:</p>
             <code>xattr -cr /Applications/PolarChat.app</code>
-            <p>Then open the app normally. Alternatively: System Settings → Privacy & Security → "Open Anyway".</p>
-            <p class="note">Requires macOS 11 (Big Sur) or later.</p>
+            <p><strong>4.</strong> Open PolarChat from Applications.</p>
+            <p class="note">⚠️ macOS will show "PolarChat is damaged" without step 3. This is because the app is not signed with an Apple Developer certificate — the command above removes the quarantine flag. You can also go to System Settings → Privacy & Security → "Open Anyway".</p>
           </div>
         </details>
 
