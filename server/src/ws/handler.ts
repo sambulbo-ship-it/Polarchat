@@ -391,6 +391,16 @@ function handleMessage(client: AuthenticatedClient, payload: Record<string, unkn
     return;
   }
 
+  // Validate payload sizes to prevent memory exhaustion
+  if (typeof ciphertext !== 'string' || ciphertext.length > 65536) {
+    sendError(client.ws, 'Message too large');
+    return;
+  }
+  if (typeof nonce !== 'string' || nonce.length > 128) {
+    sendError(client.ws, 'Invalid nonce');
+    return;
+  }
+
   const channel = getChannelById(channelId);
   if (!channel) {
     sendError(client.ws, 'Channel not found');
@@ -597,7 +607,8 @@ function sendUserServers(client: AuthenticatedClient): void {
  */
 function handleGetMessages(client: AuthenticatedClient, payload: Record<string, unknown>): void {
   const channelId = payload.channelId as string;
-  const limit = (payload.limit as number) || 50;
+  const rawLimit = Number(payload.limit) || 50;
+  const limit = Math.max(1, Math.min(rawLimit, 200));
   const before = payload.before as number | undefined;
 
   if (!channelId) {
@@ -642,8 +653,8 @@ function handleGetMessages(client: AuthenticatedClient, payload: Record<string, 
  */
 function handleCreateServer(client: AuthenticatedClient, payload: Record<string, unknown>): void {
   const name = payload.name as string;
-  if (!name) {
-    sendError(client.ws, 'Missing server name');
+  if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 256) {
+    sendError(client.ws, 'Invalid server name (1-256 characters)');
     return;
   }
 

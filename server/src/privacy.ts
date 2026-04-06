@@ -67,8 +67,9 @@ export function stripIdentifyingHeaders(req: Request, res: Response, next: NextF
   originalSetHeader('Pragma', 'no-cache');
   originalSetHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
   );
+  originalSetHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
   next();
 }
