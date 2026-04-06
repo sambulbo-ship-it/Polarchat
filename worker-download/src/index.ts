@@ -57,19 +57,20 @@ function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch:
     windows: [
       { label: 'Windows Installer (.exe)', pattern: /win-x64\.exe$/i, priority: 1 },
       { label: 'Windows ARM Installer', pattern: /win-arm64\.exe$/i, priority: 2 },
-      { label: 'Windows Portable', pattern: /portable.*\.exe$/i, priority: 3 },
+      { label: 'Windows Portable', pattern: /win\.exe$/i, priority: 3 },
     ],
     mac: [
-      { label: 'macOS Intel (.dmg)', pattern: /mac-x64\.dmg$/i, priority: 2 },
       { label: 'macOS Apple Silicon (.dmg)', pattern: /mac-arm64\.dmg$/i, priority: 1 },
-      { label: 'macOS Intel (.zip)', pattern: /mac-x64\.zip$/i, priority: 4 },
+      { label: 'macOS Intel (.dmg)', pattern: /mac-x64\.dmg$/i, priority: 2 },
       { label: 'macOS Apple Silicon (.zip)', pattern: /mac-arm64\.zip$/i, priority: 3 },
+      { label: 'macOS Intel (.zip)', pattern: /mac-x64\.zip$/i, priority: 4 },
     ],
     linux: [
-      { label: 'Linux AppImage', pattern: /x64\.AppImage$/i, priority: 1 },
+      { label: 'Linux AppImage', pattern: /x86_64\.AppImage$/i, priority: 1 },
       { label: 'Linux ARM AppImage', pattern: /arm64\.AppImage$/i, priority: 2 },
-      { label: 'Debian/Ubuntu (.deb)', pattern: /x64\.deb$/i, priority: 3 },
-      { label: 'Fedora/RHEL (.rpm)', pattern: /x64\.rpm$/i, priority: 4 },
+      { label: 'Debian/Ubuntu (.deb)', pattern: /amd64\.deb$/i, priority: 3 },
+      { label: 'Debian/Ubuntu ARM (.deb)', pattern: /arm64\.deb$/i, priority: 4 },
+      { label: 'Fedora/RHEL (.rpm)', pattern: /x86_64\.rpm$/i, priority: 5 },
     ],
   };
 
