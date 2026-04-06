@@ -88,9 +88,6 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": true,
-      "installerIcon": "assets/icon.png",
-      "uninstallerIcon": "assets/icon.png",
-      "installerHeaderIcon": "assets/icon.png",
       "shortcutName": "PolarChat",
       "menuCategory": "PolarChat"
     },
