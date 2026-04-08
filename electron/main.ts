@@ -137,8 +137,9 @@ function createWindow(): void {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // Production: load from bundled client files using custom protocol
-    mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+    // Production: load from bundled client files in extraResources
+    const rendererPath = path.join(process.resourcesPath, 'renderer', 'index.html');
+    mainWindow.loadFile(rendererPath);
   }
 
   // macOS: hide window instead of closing (stays in dock)

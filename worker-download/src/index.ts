@@ -124,12 +124,12 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
     const isDetected = p === platform;
     return `
       <div class="platform-card ${isDetected ? 'detected' : ''}">
-        ${isDetected ? '<span class="badge">Your system</span>' : ''}
+        <span class="badge beta-badge">${isDetected ? 'Your system — Beta' : 'Beta'}</span>
         <div class="platform-header">
           <span class="platform-icon">${platformIcons[p]}</span>
           <div>
             <h3>${platformLabels[p]}</h3>
-            <span class="version-small">v${version}</span>
+            <span class="version-small">v${version}-beta</span>
           </div>
         </div>
         <div class="download-list">
@@ -493,13 +493,13 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for ${platformLabels[platform]}
           </a>
-          <p class="cta-meta">${downloads.primary.filename} — ${downloads.primary.size} — v${version}</p>
+          <p class="cta-meta">${downloads.primary.filename} — ${downloads.primary.size} — v${version}-beta</p>
         ` : `
           <a href="/get/${platform}" class="cta-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for ${platformLabels[platform]}
           </a>
-          <p class="cta-meta">v${version} — Auto-detects your system</p>
+          <p class="cta-meta">v${version}-beta — Auto-detects your system</p>
         `}
       </div>
 
