@@ -20,7 +20,9 @@ app.use(helmet());
 
 // CORS for local development. In production, restrict to the actual client origin.
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false, // No cookies — we use Bearer tokens only.

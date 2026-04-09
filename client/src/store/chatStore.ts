@@ -415,8 +415,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     },
 
     connectWebSocket: (token: string) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+      const isTauri = !!(window as any).__TAURI_INTERNALS__;
+      const wsUrl = isTauri
+        ? `ws://localhost:3001/ws?token=${encodeURIComponent(token)}`
+        : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 
       const ws = new WebSocket(wsUrl);
 

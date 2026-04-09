@@ -55,22 +55,16 @@ function proxyDownloadUrl(filename: string): string {
 function getDownloadsForPlatform(assets: ReleaseAsset[], platform: string, arch: string): PlatformInfo {
   const patterns: Record<string, { label: string; pattern: RegExp; priority: number }[]> = {
     windows: [
-      { label: 'Windows Installer (.exe)', pattern: /win-x64\.exe$/i, priority: 1 },
-      { label: 'Windows ARM Installer', pattern: /win-arm64\.exe$/i, priority: 2 },
-      { label: 'Windows Portable', pattern: /win\.exe$/i, priority: 3 },
+      { label: 'Windows Installer (.exe)', pattern: /_x64-setup\.exe$/i, priority: 1 },
+      { label: 'Windows Installer (.msi)', pattern: /_x64.*\.msi$/i, priority: 2 },
     ],
     mac: [
-      { label: 'macOS Apple Silicon (.dmg)', pattern: /mac-arm64\.dmg$/i, priority: 1 },
-      { label: 'macOS Intel (.dmg)', pattern: /mac-x64\.dmg$/i, priority: 2 },
-      { label: 'macOS Apple Silicon (.zip)', pattern: /mac-arm64\.zip$/i, priority: 3 },
-      { label: 'macOS Intel (.zip)', pattern: /mac-x64\.zip$/i, priority: 4 },
+      { label: 'macOS Apple Silicon (.dmg)', pattern: /_aarch64\.dmg$/i, priority: 1 },
+      { label: 'macOS Intel (.dmg)', pattern: /_x64\.dmg$/i, priority: 2 },
     ],
     linux: [
-      { label: 'Linux AppImage', pattern: /x86_64\.AppImage$/i, priority: 1 },
-      { label: 'Linux ARM AppImage', pattern: /arm64\.AppImage$/i, priority: 2 },
-      { label: 'Debian/Ubuntu (.deb)', pattern: /amd64\.deb$/i, priority: 3 },
-      { label: 'Debian/Ubuntu ARM (.deb)', pattern: /arm64\.deb$/i, priority: 4 },
-      { label: 'Fedora/RHEL (.rpm)', pattern: /x86_64\.rpm$/i, priority: 5 },
+      { label: 'Linux AppImage', pattern: /_amd64\.AppImage$/i, priority: 1 },
+      { label: 'Debian/Ubuntu (.deb)', pattern: /_amd64\.deb$/i, priority: 2 },
     ],
   };
 
@@ -568,10 +562,7 @@ function renderPage(release: GitHubRelease | null, userAgent: string): string {
           <div class="install-content">
             <p><strong>1.</strong> Download the .dmg file and open it.</p>
             <p><strong>2.</strong> Drag PolarChat to your Applications folder.</p>
-            <p><strong>3.</strong> Open Terminal and run:</p>
-            <code>xattr -cr /Applications/PolarChat.app</code>
-            <p><strong>4.</strong> Open PolarChat from Applications.</p>
-            <p class="note">⚠️ macOS will show "PolarChat is damaged" without step 3. This is because the app is not signed with an Apple Developer certificate — the command above removes the quarantine flag. You can also go to System Settings → Privacy & Security → "Open Anyway".</p>
+            <p><strong>3.</strong> Open PolarChat from Applications.</p>
           </div>
         </details>
 

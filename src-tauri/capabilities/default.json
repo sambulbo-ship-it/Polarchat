@@ -1,0 +1,18 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for PolarChat",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:default",
+    "shell:default",
+    "shell:allow-open"
+  ]
+}

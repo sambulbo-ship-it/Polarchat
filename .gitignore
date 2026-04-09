@@ -37,8 +37,9 @@ npm-debug.log*
 # Testing
 coverage/
 
-# Electron
-release/
+# Tauri
+src-tauri/target/
+src-tauri/gen/
 
 # Worker build output
 dist-output/

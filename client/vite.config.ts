@@ -3,8 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // In Electron production, files are loaded from disk (file://), so use relative paths
-  base: process.env.ELECTRON_BUILD === 'true' ? './' : '/',
+  base: '/',
   server: {
     port: 5173,
     proxy: {
