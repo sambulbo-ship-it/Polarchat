@@ -1,6 +1,6 @@
 {
   "name": "polarchat",
-  "version": "0.2.0-beta",
+  "version": "0.3.0-beta",
   "description": "PolarChat - A privacy-first, end-to-end encrypted chat application. No tracking. No logs. No compromise.",
   "private": true,
   "workspaces": [
@@ -11,7 +11,6 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "dev:desktop": "concurrently \"npm run dev:server\" \"cargo tauri dev\"",
 
     "build": "npm run build:client && npm run build:server",
     "build:client": "cd client && npm run build",
@@ -19,9 +18,11 @@
 
     "start": "cd server && npm start",
 
-    "desktop:build": "npm run build && cargo tauri build"
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
     "concurrently": "^8.2.2"
   },
   "engines": {

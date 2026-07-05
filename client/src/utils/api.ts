@@ -1,5 +1,4 @@
-const isTauri = !!(window as any).__TAURI_INTERNALS__;
-const BASE_URL = isTauri ? 'http://localhost:3001/api' : '/api';
+const BASE_URL = '/api';
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;

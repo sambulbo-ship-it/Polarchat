@@ -57,9 +57,8 @@ const PLATFORMS = {
     icon: Monitor,
     color: 'from-blue-500 to-blue-600',
     formats: [
-      { label: 'Installer (.exe)', pattern: /win-x64\.exe$/, arch: 'x64' },
-      { label: 'Installer ARM (.exe)', pattern: /win-arm64\.exe$/, arch: 'arm64' },
-      { label: 'Portable (.exe)', pattern: /portable.*\.exe$/, arch: 'x64' },
+      { label: 'Installer (.exe)', pattern: /_x64-setup\.exe$/, arch: 'x64' },
+      { label: 'Installer (.msi)', pattern: /_x64.*\.msi$/, arch: 'x64' },
     ],
   },
   mac: {
@@ -67,10 +66,8 @@ const PLATFORMS = {
     icon: Apple,
     color: 'from-gray-400 to-gray-500',
     formats: [
-      { label: 'Intel (.dmg)', pattern: /mac-x64\.dmg$/, arch: 'x64' },
-      { label: 'Apple Silicon (.dmg)', pattern: /mac-arm64\.dmg$/, arch: 'arm64' },
-      { label: 'Intel (.zip)', pattern: /mac-x64\.zip$/, arch: 'x64' },
-      { label: 'Apple Silicon (.zip)', pattern: /mac-arm64\.zip$/, arch: 'arm64' },
+      { label: 'Apple Silicon (.dmg)', pattern: /_aarch64\.dmg$/, arch: 'arm64' },
+      { label: 'Intel (.dmg)', pattern: /_x64\.dmg$/, arch: 'x64' },
     ],
   },
   linux: {
@@ -78,10 +75,9 @@ const PLATFORMS = {
     icon: Monitor,
     color: 'from-orange-500 to-yellow-500',
     formats: [
-      { label: 'AppImage', pattern: /x64\.AppImage$/, arch: 'x64' },
-      { label: 'AppImage ARM', pattern: /arm64\.AppImage$/, arch: 'arm64' },
-      { label: 'Debian (.deb)', pattern: /x64\.deb$/, arch: 'x64' },
-      { label: 'RPM (.rpm)', pattern: /x64\.rpm$/, arch: 'x64' },
+      { label: 'AppImage', pattern: /_amd64\.AppImage$/, arch: 'x64' },
+      { label: 'Debian (.deb)', pattern: /_amd64\.deb$/, arch: 'x64' },
+      { label: 'RPM (.rpm)', pattern: /\.x86_64\.rpm$/, arch: 'x64' },
     ],
   },
 } as const;

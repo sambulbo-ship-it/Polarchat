@@ -67,7 +67,11 @@ export function stripIdentifyingHeaders(req: Request, res: Response, next: NextF
   originalSetHeader('Pragma', 'no-cache');
   originalSetHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+    // No upgrade-insecure-requests: the embedded desktop server runs on plain
+    // http://localhost — forcing https there would break the app. TLS for the
+    // hosted web version is terminated upstream. api.github.com is allowed so
+    // the in-app download page can list releases.
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss: https://api.github.com; font-src 'self'; object-src 'none'; frame-ancestors 'none'"
   );
   originalSetHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 

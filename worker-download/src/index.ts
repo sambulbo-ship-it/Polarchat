@@ -1,6 +1,6 @@
 const GITHUB_REPO = 'sambulbo-ship-it/Polarchat';
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const VERSION = '0.2';
+const VERSION = '0.3';
 
 interface ReleaseAsset {
   name: string;

@@ -2,6 +2,8 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import http from 'http';
+import path from 'path';
+import fs from 'fs';
 import { WebSocketServer } from 'ws';
 import authRoutes from './routes/auth';
 import channelRoutes from './routes/channels';
@@ -15,8 +17,10 @@ const app = express();
 
 // ─── Security & Privacy ────────────────────────────────────────────────────────
 
-// Helmet sets hardened security headers (CSP, HSTS, etc.).
-app.use(helmet());
+// Helmet sets hardened security headers. CSP is set explicitly in privacy.ts
+// (a single authoritative policy — two CSP headers would intersect and break
+// same-origin WebSocket upgrades in some webviews).
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // CORS for local development. In production, restrict to the actual client origin.
 app.use(cors({
@@ -52,19 +56,35 @@ app.use((_req, _res, next) => {
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
 
-app.use('/auth', authRoutes);
-app.use('/channels', channelRoutes);
-app.use('/servers', serverRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/channels', channelRoutes);
+app.use('/api/servers', serverRoutes);
 
 // Health check — reveals nothing sensitive.
-app.get('/health', (_req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// 404 handler.
-app.use((_req, res) => {
+// API 404 handler.
+app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
+
+// ─── Static client (web + desktop share the same origin) ──────────────────────
+
+const CLIENT_DIR = process.env.CLIENT_DIR || path.join(__dirname, '..', '..', 'client', 'dist');
+
+if (fs.existsSync(path.join(CLIENT_DIR, 'index.html'))) {
+  app.use(express.static(CLIENT_DIR));
+  // SPA fallback: client-side routes (/login, /app, …) resolve to index.html.
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(CLIENT_DIR, 'index.html'));
+  });
+} else {
+  app.use((_req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 // ─── HTTP + WebSocket Server ───────────────────────────────────────────────────
 

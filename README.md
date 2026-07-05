@@ -47,7 +47,7 @@ No spyware. No tracking. No data collection. No compromise.
 | Database | SQLite (zero-knowledge design) |
 | Auth | Argon2id password hashing |
 | Voice | WebRTC + SRTP |
-| Desktop | Electron (privacy-hardened) |
+| Desktop | Tauri v2 (system webview, ~10x lighter than Electron) |
 
 ## Project Structure
 
@@ -68,7 +68,8 @@ Polarchat/
 │       ├── crypto.ts    # Server-side crypto (tokens only)
 │       ├── db.ts        # SQLite zero-knowledge database
 │       └── privacy.ts   # Privacy enforcement
-├── electron/        # Desktop app wrapper
+├── src-tauri/       # Native desktop app (Tauri v2 / Rust)
+├── scripts/         # Desktop staging (bundles server + Node runtime)
 └── PRIVACY.md       # Full privacy policy
 ```
 
@@ -101,41 +102,29 @@ npm run build
 
 PolarChat can be packaged as a native desktop app for **Windows**, **macOS**, and **Linux**.
 
-```bash
-# Install Electron dependencies
-cd electron && npm install && cd ..
+Built with [Tauri v2](https://v2.tauri.app): the app uses the OS webview
+(WebKit on macOS, WebView2 on Windows, WebKitGTK on Linux) and embeds the
+PolarChat server plus a Node.js runtime — no external dependencies for users.
 
-# Build for your current platform
-npm run desktop:dist
-
-# Build for a specific platform
-npm run desktop:win      # Windows (.exe installer + portable)
-npm run desktop:mac      # macOS (.dmg + .zip)
-npm run desktop:linux    # Linux (.AppImage + .deb + .rpm)
-
-# Build for ALL platforms at once
-npm run desktop:all
-```
-
-#### Output Files
-
-| Platform | Format | Location |
-|----------|--------|----------|
-| Windows | `.exe` (NSIS installer) | `release/PolarChat-1.0.0-win-x64.exe` |
-| Windows | `.exe` (portable) | `release/PolarChat-1.0.0-win-x64-portable.exe` |
-| macOS | `.dmg` | `release/PolarChat-1.0.0-mac-x64.dmg` |
-| macOS | `.zip` | `release/PolarChat-1.0.0-mac-arm64.zip` |
-| Linux | `.AppImage` | `release/PolarChat-1.0.0-x64.AppImage` |
-| Linux | `.deb` | `release/PolarChat-1.0.0-linux-x64.deb` |
-| Linux | `.rpm` | `release/PolarChat-1.0.0-linux-x64.rpm` |
-
-#### Custom App Icon
+Requires the [Rust toolchain](https://rustup.rs) to build.
 
 ```bash
-# Generate icons from a 1024x1024 PNG source
-cd electron/assets
-./generate-icons.sh your-icon-1024x1024.png
+# Build the desktop app for your current platform
+npm run desktop:build
+
+# Run the desktop app in dev mode (hot reload)
+npm run desktop:dev
 ```
+
+Bundles land in `src-tauri/target/release/bundle/`. Official installers for
+every platform are built automatically by CI when a `v*.*.*` tag is pushed,
+and published at https://polarchat.animalcoat.com.
+
+| Platform | Formats |
+|----------|---------|
+| macOS (Apple Silicon + Intel) | `.dmg` |
+| Windows | `.exe` (NSIS), `.msi` |
+| Linux | `.AppImage`, `.deb`, `.rpm` |
 
 ## Privacy Policy
 
